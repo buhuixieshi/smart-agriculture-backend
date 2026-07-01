@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: smart-agriculture-backend
+
+  datasource:
+    url: jdbc:mysql://localhost:3309/smart_agriculture?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+server:
+  port: 8080
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+jwt:
+  secret: smart-agriculture-secret-key-change-this
+  expire-hours: 24
