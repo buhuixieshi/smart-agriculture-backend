@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
+                        .requestMatchers("/api/mqtt/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/ws/**").permitAll()
                         .requestMatchers("/api/plots/**").permitAll()

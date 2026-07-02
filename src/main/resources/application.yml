@@ -21,3 +21,15 @@ mybatis-plus:
 jwt:
   secret: smart-agriculture-secret-key-change-this
   expire-hours: 24
+
+mqtt:
+  enabled: true
+  broker-url: tcp://127.0.0.1:1883
+  client-id: smart-agriculture-backend
+  username: fasong
+  password: fasong123
+  qos: 1
+  topics:
+    telemetry: device/data/upload
+    heartbeat: device/heartbeat
+    control: device/control/cmd
