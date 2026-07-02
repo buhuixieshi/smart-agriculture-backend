@@ -48,6 +48,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/ws/**").permitAll()
                         .requestMatchers("/api/plots/**").permitAll()
                         .requestMatchers("/api/devices/**").permitAll()
+                        .requestMatchers("/api/telemetry/**").permitAll()
+                        .requestMatchers("/api/control/**").permitAll()
+                        .requestMatchers("/api/irrigation/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

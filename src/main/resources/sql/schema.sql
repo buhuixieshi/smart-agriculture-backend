@@ -53,3 +53,35 @@ CREATE TABLE IF NOT EXISTS telemetry_data (
   collected_at DATETIME NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS control_command (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  command_no VARCHAR(50) NOT NULL UNIQUE,
+  plot_id BIGINT,
+  device_id BIGINT,
+  device_code VARCHAR(50) NOT NULL,
+  command_type VARCHAR(50) NOT NULL,
+  command_value VARCHAR(100),
+  status VARCHAR(20) DEFAULT 'PENDING',
+  request_source VARCHAR(20) DEFAULT 'WEB',
+  error_message VARCHAR(255),
+  sent_at DATETIME,
+  ack_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS irrigation_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  plot_id BIGINT,
+  device_id BIGINT,
+  device_code VARCHAR(50),
+  command_id BIGINT,
+  start_time DATETIME NOT NULL,
+  end_time DATETIME,
+  duration_seconds INT,
+  water_amount DECIMAL(10,2),
+  status VARCHAR(20) DEFAULT 'RUNNING',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

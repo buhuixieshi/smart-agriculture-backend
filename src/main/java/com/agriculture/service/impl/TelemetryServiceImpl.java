@@ -4,6 +4,7 @@ import com.agriculture.entity.TelemetryData;
 import com.agriculture.mapper.TelemetryDataMapper;
 import com.agriculture.service.TelemetryService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
@@ -18,5 +19,22 @@ public class TelemetryServiceImpl extends ServiceImpl<TelemetryDataMapper, Telem
                 .last("LIMIT 1");
 
         return getOne(wrapper);
+    }
+
+    @Override
+    public Page<TelemetryData> pageHistory(Long plotId, Long deviceId, Integer page, Integer size) {
+        LambdaQueryWrapper<TelemetryData> wrapper = new LambdaQueryWrapper<>();
+
+        if (plotId != null) {
+            wrapper.eq(TelemetryData::getPlotId, plotId);
+        }
+
+        if (deviceId != null) {
+            wrapper.eq(TelemetryData::getDeviceId, deviceId);
+        }
+
+        wrapper.orderByDesc(TelemetryData::getCollectedAt);
+
+        return this.page(new Page<>(page, size), wrapper);
     }
 }
