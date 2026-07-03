@@ -29,7 +29,11 @@ public class ControlController {
     }
 
     @GetMapping("/list")
-    public Result<List<ControlCommand>> list(@RequestParam String deviceCode) {
+    public Result<List<ControlCommand>> list(@RequestParam(required = false) String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return Result.fail(400, "deviceCode为必填参数");
+        }
+
         return Result.ok(controlService.listByDeviceCode(deviceCode));
     }
 }

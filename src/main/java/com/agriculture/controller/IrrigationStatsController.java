@@ -21,7 +21,11 @@ public class IrrigationStatsController {
     }
 
     @GetMapping("/list")
-    public Result<List<IrrigationRecord>> list(@RequestParam String deviceCode) {
+    public Result<List<IrrigationRecord>> list(@RequestParam(required = false) String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return Result.fail(400, "deviceCode为必填参数");
+        }
+
         return Result.ok(irrigationStatsService.listByDeviceCode(deviceCode));
     }
 }
