@@ -67,7 +67,8 @@ public class MqttIntegrationConfig {
     public MessageProducer mqttInbound() {
         String[] topics = new String[]{
                 mqttProperties.getTopics().getTelemetry(),
-                mqttProperties.getTopics().getHeartbeat()
+                mqttProperties.getTopics().getHeartbeat(),
+                mqttProperties.getTopics().getControlReply()
         };
 
         MqttPahoMessageDrivenChannelAdapter adapter =

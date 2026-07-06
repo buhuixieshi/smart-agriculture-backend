@@ -1,6 +1,7 @@
 package com.agriculture.service.impl;
 
 import com.agriculture.entity.ControlCommand;
+import com.agriculture.service.CommandDispatchResult;
 import com.agriculture.service.MqttCommandService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,8 @@ import org.springframework.stereotype.Service;
 public class DisabledMqttCommandServiceImpl implements MqttCommandService {
 
     @Override
-    public void sendCommand(ControlCommand command) {
+    public CommandDispatchResult sendCommand(ControlCommand command) {
         // Used by tests or local runs where MQTT integration is explicitly disabled.
+        return CommandDispatchResult.sent("MQTT command sending is disabled");
     }
 }

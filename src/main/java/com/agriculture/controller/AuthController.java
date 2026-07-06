@@ -1,5 +1,6 @@
 package com.agriculture.controller;
 
+import com.agriculture.aspect.OperationLogRecord;
 import com.agriculture.common.Result;
 import com.agriculture.dto.LoginDTO;
 import com.agriculture.dto.RegisterDTO;
@@ -32,6 +33,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @OperationLogRecord(type = "USER_LOGIN", target = "user", detail = "用户登录")
     public Result<LoginVO> login(@RequestBody LoginDTO dto) {
         return Result.ok(authService.login(dto));
     }

@@ -1,5 +1,6 @@
 package com.agriculture.controller;
 
+import com.agriculture.aspect.OperationLogRecord;
 import com.agriculture.common.Result;
 import com.agriculture.dto.IrrigationControlDTO;
 import com.agriculture.entity.ControlCommand;
@@ -27,6 +28,7 @@ public class ControlController {
     }
 
     @PostMapping("/send")
+    @OperationLogRecord(type = "CONTROL_SEND", target = "control_command", detail = "发送控制命令")
     public Result<ControlCommand> send(@RequestParam(required = false) String deviceCode,
                                        @RequestParam(required = false) String commandType,
                                        @RequestParam(required = false) String commandValue) {
@@ -42,6 +44,7 @@ public class ControlController {
     }
 
     @PostMapping("/irrigation")
+    @OperationLogRecord(type = "IRRIGATION_CONTROL", target = "control_command", detail = "灌溉控制")
     public Result<CommandVO> irrigation(@Valid @RequestBody IrrigationControlDTO dto) {
         return Result.ok(controlService.irrigationControl(dto));
     }

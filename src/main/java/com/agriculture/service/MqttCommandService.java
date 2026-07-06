@@ -4,5 +4,5 @@ import com.agriculture.entity.ControlCommand;
 
 public interface MqttCommandService {
 
-    void sendCommand(ControlCommand command);
+    CommandDispatchResult sendCommand(ControlCommand command);
 }

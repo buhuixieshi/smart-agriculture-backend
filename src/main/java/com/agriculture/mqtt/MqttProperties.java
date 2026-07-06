@@ -29,5 +29,7 @@ public class MqttProperties {
         private String heartbeat;
 
         private String control;
+
+        private String controlReply;
     }
 }

@@ -3,6 +3,7 @@ package com.agriculture.common;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -26,6 +27,11 @@ public class GlobalExceptionHandler {
 
         String message = fieldError != null ? fieldError.getDefaultMessage() : "参数错误";
         return Result.fail(400, message);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public Result<Void> handleMissingServletRequestParameterException(MissingServletRequestParameterException exception) {
+        return Result.fail(400, exception.getParameterName() + "为必填参数");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

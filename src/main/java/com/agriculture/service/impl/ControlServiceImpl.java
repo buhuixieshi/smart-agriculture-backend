@@ -1,13 +1,17 @@
 package com.agriculture.service.impl;
 
+import com.agriculture.config.HardwareControlProperties;
 import com.agriculture.dto.IrrigationControlDTO;
 import com.agriculture.entity.ControlCommand;
 import com.agriculture.entity.Device;
 import com.agriculture.mapper.ControlCommandMapper;
+import com.agriculture.service.CommandDispatchResult;
 import com.agriculture.service.ControlService;
 import com.agriculture.service.DeviceService;
+import com.agriculture.service.HardwareControlClient;
 import com.agriculture.service.IrrigationStatsService;
 import com.agriculture.service.MqttCommandService;
+import com.agriculture.service.WaterUsageLimitService;
 import com.agriculture.vo.CommandVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -22,25 +26,44 @@ import java.util.List;
 public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, ControlCommand> implements ControlService {
 
     private final DeviceService deviceService;
-    private final IrrigationStatsService irrigationStatsService;
     private final MqttCommandService mqttCommandService;
+    private final HardwareControlClient hardwareControlClient;
+    private final HardwareControlProperties hardwareControlProperties;
+    private final IrrigationStatsService irrigationStatsService;
+    private final WaterUsageLimitService waterUsageLimitService;
 
     public ControlServiceImpl(DeviceService deviceService,
+                              MqttCommandService mqttCommandService,
+                              HardwareControlClient hardwareControlClient,
+                              HardwareControlProperties hardwareControlProperties,
                               IrrigationStatsService irrigationStatsService,
-                              MqttCommandService mqttCommandService) {
+                              WaterUsageLimitService waterUsageLimitService) {
         this.deviceService = deviceService;
-        this.irrigationStatsService = irrigationStatsService;
         this.mqttCommandService = mqttCommandService;
+        this.hardwareControlClient = hardwareControlClient;
+        this.hardwareControlProperties = hardwareControlProperties;
+        this.irrigationStatsService = irrigationStatsService;
+        this.waterUsageLimitService = waterUsageLimitService;
     }
 
     @Override
     @Transactional
     public ControlCommand sendCommand(String deviceCode, String commandType, String commandValue) {
+        return sendCommand(deviceCode, commandType, commandValue, "WEB");
+    }
+
+    @Override
+    @Transactional
+    public ControlCommand sendCommand(String deviceCode, String commandType, String commandValue, String requestSource) {
         validateCommandType(commandType);
 
         Device device = deviceService.getByDeviceCode(deviceCode);
         if (device == null) {
             throw new IllegalArgumentException("设备不存在：" + deviceCode);
+        }
+
+        if ("PUMP_ON".equals(commandType)) {
+            waterUsageLimitService.checkBeforePumpOn(device);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -53,21 +76,18 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         command.setCommandType(commandType);
         command.setCommandValue(normalizeCommandValue(commandType, commandValue));
         command.setStatus("PENDING");
-        command.setRequestSource("WEB");
+        command.setRequestSource(resolveRequestSource(requestSource));
         command.setCreatedAt(now);
         command.setUpdatedAt(now);
 
         this.save(command);
 
         try {
-            mqttCommandService.sendCommand(command);
-
-            command.setStatus("SENT");
-            command.setSentAt(LocalDateTime.now());
-            command.setUpdatedAt(LocalDateTime.now());
-            this.updateById(command);
-
-            handleIrrigationRecord(device, command);
+            if (Boolean.TRUE.equals(hardwareControlProperties.getEnabled())) {
+                sendByHardwareGateway(device, command);
+            } else {
+                sendByMqtt(device, command);
+            }
         } catch (Exception e) {
             command.setStatus("FAILED");
             command.setErrorMessage(e.getMessage());
@@ -76,6 +96,57 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         }
 
         return command;
+    }
+
+    private String resolveRequestSource(String requestSource) {
+        if (requestSource == null || requestSource.isBlank()) {
+            return "WEB";
+        }
+        return requestSource;
+    }
+
+    private void sendByHardwareGateway(Device device, ControlCommand command) {
+        LocalDateTime sentAt = LocalDateTime.now();
+        command.setSentAt(sentAt);
+
+        String message = hardwareControlClient.sendCommand(command);
+        LocalDateTime ackAt = LocalDateTime.now();
+
+        command.setStatus("SUCCESS");
+        command.setAckAt(ackAt);
+        command.setErrorMessage(message);
+        command.setUpdatedAt(ackAt);
+        this.updateById(command);
+
+        handleSuccessfulIrrigationRecord(device, command);
+    }
+
+    private void sendByMqtt(Device device, ControlCommand command) {
+        CommandDispatchResult result = mqttCommandService.sendCommand(command);
+
+        command.setSentAt(LocalDateTime.now());
+        if (result.acknowledged()) {
+            command.setStatus("SUCCESS");
+            command.setAckAt(LocalDateTime.now());
+            command.setErrorMessage(result.message());
+        } else {
+            command.setStatus("SENT");
+            command.setErrorMessage(result.message());
+        }
+        command.setUpdatedAt(LocalDateTime.now());
+        this.updateById(command);
+
+        if (result.acknowledged()) {
+            handleSuccessfulIrrigationRecord(device, command);
+        }
+    }
+
+    private void handleSuccessfulIrrigationRecord(Device device, ControlCommand command) {
+        if ("PUMP_ON".equals(command.getCommandType())) {
+            irrigationStatsService.startIrrigation(device, command);
+        } else if ("PUMP_OFF".equals(command.getCommandType())) {
+            waterUsageLimitService.checkFinishedRecord(device, irrigationStatsService.finishLatestRunning(device, command));
+        }
     }
 
     @Override
@@ -128,14 +199,6 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         }
 
         return toCommandVO(command);
-    }
-
-    private void handleIrrigationRecord(Device device, ControlCommand command) {
-        if ("PUMP_ON".equals(command.getCommandType())) {
-            irrigationStatsService.startIrrigation(device, command);
-        } else if ("PUMP_OFF".equals(command.getCommandType())) {
-            irrigationStatsService.finishLatestRunning(device, command);
-        }
     }
 
     private void validateCommandType(String commandType) {

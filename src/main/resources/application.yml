@@ -22,6 +22,12 @@ jwt:
   secret: smart-agriculture-secret-key-change-this
   expire-hours: 24
 
+hardware:
+  control:
+    enabled: false
+    base-url: http://192.168.20.190:3000
+    device: bearpi_001
+
 mqtt:
   enabled: true
   broker-url: tcp://127.0.0.1:1883
@@ -33,3 +39,11 @@ mqtt:
     telemetry: device/data/upload
     heartbeat: device/heartbeat
     control: device/control/cmd
+    control-reply: device/control/reply
+
+pest:
+  model:
+    enabled: true
+    url: http://192.168.20.84:5000/pest/detect
+    connect-timeout-seconds: 5
+    read-timeout-seconds: 30
