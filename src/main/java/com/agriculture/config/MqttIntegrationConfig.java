@@ -65,8 +65,10 @@ public class MqttIntegrationConfig {
 
     @Bean
     public MessageProducer mqttInbound() {
+        String telemetryTopic = mqttProperties.getTopics().getTelemetry();
         String[] topics = new String[]{
-                mqttProperties.getTopics().getTelemetry(),
+                telemetryTopic,
+                telemetryTopic + "/+",
                 mqttProperties.getTopics().getHeartbeat(),
                 mqttProperties.getTopics().getControlReply()
         };

@@ -46,4 +46,19 @@ pest:
     enabled: true
     url: http://192.168.20.84:5000/pest/detect
     connect-timeout-seconds: 5
+    read-timeout-seconds: 45
+
+ai:
+  chat:
+    model:
+      enabled: true
+      url: http://192.168.20.84:5000/api/ai/chat
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 45
+
+face:
+  model:
+    enabled: true
+    url: http://127.0.0.1:5001
+    connect-timeout-seconds: 5
     read-timeout-seconds: 30

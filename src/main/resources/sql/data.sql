@@ -2,9 +2,7 @@ USE smart_agriculture;
 
 INSERT INTO plot (id, name, crop_type, location, area, status, description)
 VALUES
-  (1, 'Greenhouse A - Tomato Area', 'Tomato', 'Area A', 120.00, 'ONLINE', 'Tomato planting and irrigation demo area'),
-  (2, 'Greenhouse B - Cucumber Area', 'Cucumber', 'Area B', 100.00, 'ONLINE', 'Cucumber planting and lighting demo area'),
-  (3, 'Open Field C - Corn Area', 'Corn', 'Area C', 320.00, 'OFFLINE', 'Open field under maintenance')
+  (1, 'BearPi Smart Agriculture Plot', 'Tomato', 'Area A', 120.00, 'ONLINE', 'Real BearPi hardware integration plot')
 ON DUPLICATE KEY UPDATE
   name = VALUES(name),
   crop_type = VALUES(crop_type),
@@ -15,11 +13,7 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO device (id, device_code, device_name, device_type, plot_id, status, last_heartbeat, signal_strength, battery)
 VALUES
-  (1, 'DEV-A001', 'Greenhouse A Main Controller', 'BEARPI_MAIN', 1, 'ONLINE', NOW(), 86, 92),
-  (2, 'DEV-A002', 'Greenhouse A Soil Sensor', 'SOIL_SENSOR', 1, 'ONLINE', NOW(), 82, 88),
-  (3, 'DEV-A003', 'Greenhouse A Pump Controller', 'PUMP_CONTROLLER', 1, 'ONLINE', NOW(), 78, 90),
-  (4, 'DEV-B001', 'Greenhouse B Main Controller', 'BEARPI_MAIN', 2, 'ONLINE', NOW(), 80, 85),
-  (5, 'DEV-C001', 'Open Field C Camera', 'CAMERA', 3, 'OFFLINE', NULL, 0, 35)
+  (7, '6a44b8fdcbb0cf6bb96ad1a1_bearpi_001', 'BearPi-001', 'BEARPI', 1, 'ONLINE', NOW(), 86, 92)
 ON DUPLICATE KEY UPDATE
   device_code = VALUES(device_code),
   device_name = VALUES(device_name),
@@ -30,19 +24,10 @@ ON DUPLICATE KEY UPDATE
   signal_strength = VALUES(signal_strength),
   battery = VALUES(battery);
 
-INSERT INTO device (device_code, device_name, device_type, plot_id, status, last_heartbeat)
-VALUES
-  ('6a44b8fdcbb0cf6bb96ad1a1_bearpi_001', 'BearPi-001', 'BEARPI', 1, 'ONLINE', NOW())
-ON DUPLICATE KEY UPDATE
-  device_name = VALUES(device_name),
-  device_type = VALUES(device_type),
-  plot_id = VALUES(plot_id),
-  status = VALUES(status),
-  last_heartbeat = VALUES(last_heartbeat);
-
 INSERT INTO telemetry_data (
   plot_id,
   device_id,
+  device_code,
   soil_moisture,
   air_temperature,
   air_humidity,
@@ -52,9 +37,8 @@ INSERT INTO telemetry_data (
   collected_at
 )
 VALUES
-  (1, NULL, 32.00, 27.00, 65.00, 850.00, 'OFF', 'OFF', NOW()),
-  (1, NULL, 35.00, 26.50, 66.00, 830.00, 'OFF', 'OFF', DATE_SUB(NOW(), INTERVAL 5 MINUTE)),
-  (2, NULL, 68.00, 24.00, 70.00, 900.00, 'ON', 'OFF', NOW());
+  (1, 7, '6a44b8fdcbb0cf6bb96ad1a1_bearpi_001', 32.00, 27.00, 65.00, 850.00, 'OFF', 'OFF', NOW()),
+  (1, 7, '6a44b8fdcbb0cf6bb96ad1a1_bearpi_001', 35.00, 26.50, 66.00, 830.00, 'OFF', 'OFF', DATE_SUB(NOW(), INTERVAL 5 MINUTE));
 
 INSERT INTO irrigation_strategy (
   plot_id,
@@ -154,9 +138,7 @@ INSERT INTO water_usage_limit (
   min_effective_duration
 )
 VALUES
-  (1, 200.00, 3000.00, 50.00, 80.00, 10),
-  (2, 180.00, 2600.00, 45.00, 80.00, 10),
-  (3, 300.00, 5000.00, 80.00, 85.00, 10)
+  (1, 200.00, 3000.00, 50.00, 80.00, 10)
 ON DUPLICATE KEY UPDATE
   daily_limit = VALUES(daily_limit),
   monthly_limit = VALUES(monthly_limit),
@@ -174,9 +156,7 @@ INSERT INTO light_strategy (
   cooldown_minutes
 )
 VALUES
-  (1, 500.00, 800.00, 1, '06:00:00', '20:00:00', 5),
-  (2, 450.00, 780.00, 1, '06:00:00', '20:00:00', 5),
-  (3, 400.00, 750.00, 0, '06:00:00', '20:00:00', 10)
+  (1, 500.00, 800.00, 1, '06:00:00', '20:00:00', 5)
 ON DUPLICATE KEY UPDATE
   illuminance_min = VALUES(illuminance_min),
   illuminance_max = VALUES(illuminance_max),

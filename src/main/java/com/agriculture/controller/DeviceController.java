@@ -3,11 +3,14 @@ package com.agriculture.controller;
 import com.agriculture.aspect.OperationLogRecord;
 import com.agriculture.common.Result;
 import com.agriculture.dto.DeviceDTO;
+import com.agriculture.dto.DeviceStatusDTO;
 import com.agriculture.entity.Device;
 import com.agriculture.service.DeviceService;
+import com.agriculture.vo.DeviceVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,8 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/devices")
@@ -29,20 +30,20 @@ public class DeviceController {
     }
 
     @GetMapping
-    public Result<List<Device>> list(@RequestParam(required = false) Long plotId) {
-        if (plotId != null) {
-            return Result.ok(deviceService.listByPlotId(plotId));
+    public Result<?> list(@RequestParam(required = false) String keyword,
+                          @RequestParam(required = false) Long plotId,
+                          @RequestParam(required = false) String status,
+                          @RequestParam(required = false) Integer page,
+                          @RequestParam(required = false) Integer size) {
+        if (page != null || size != null) {
+            return Result.ok(deviceService.pageDevices(keyword, plotId, status, page, size));
         }
-        return Result.ok(deviceService.list());
+        return Result.ok(deviceService.listDevices(keyword, plotId, status));
     }
 
     @GetMapping("/{id}")
-    public Result<Device> detail(@PathVariable Long id) {
-        Device device = deviceService.getById(id);
-        if (device == null) {
-            return Result.fail(400, "设备不存在：" + id);
-        }
-        return Result.ok(device);
+    public Result<DeviceVO> detail(@PathVariable Long id) {
+        return Result.ok(deviceService.getDeviceDetail(id));
     }
 
     @PostMapping
@@ -74,5 +75,23 @@ public class DeviceController {
     @OperationLogRecord(type = "DEVICE_UNBIND", target = "device", detail = "解绑地块")
     public Result<Device> unbindPlot(@PathVariable Long id) {
         return Result.ok(deviceService.unbindPlot(id));
+    }
+
+    @PutMapping("/{id}/disable")
+    @OperationLogRecord(type = "DEVICE_DISABLE", target = "device", detail = "停用设备")
+    public Result<Device> disable(@PathVariable Long id) {
+        return Result.ok(deviceService.disableDevice(id));
+    }
+
+    @PutMapping("/{id}/enable")
+    @OperationLogRecord(type = "DEVICE_ENABLE", target = "device", detail = "启用设备")
+    public Result<Device> enable(@PathVariable Long id) {
+        return Result.ok(deviceService.enableDevice(id));
+    }
+
+    @PatchMapping("/{id}/status")
+    @OperationLogRecord(type = "DEVICE_STATUS_UPDATE", target = "device", detail = "修改设备状态")
+    public Result<Device> updateStatus(@PathVariable Long id, @Valid @RequestBody DeviceStatusDTO dto) {
+        return Result.ok(deviceService.updateStatus(id, dto.getStatus()));
     }
 }

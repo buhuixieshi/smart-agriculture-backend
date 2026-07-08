@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS telemetry_data (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   plot_id BIGINT NOT NULL,
   device_id BIGINT,
+  device_code VARCHAR(50),
   soil_moisture DECIMAL(5,2),
   air_temperature DECIMAL(5,2),
   air_humidity DECIMAL(5,2),

@@ -7,17 +7,24 @@ import com.agriculture.mapper.DeviceMapper;
 import com.agriculture.service.AlarmService;
 import com.agriculture.service.DeviceService;
 import com.agriculture.service.PlotService;
+import com.agriculture.vo.DeviceCapabilitiesVO;
+import com.agriculture.vo.DeviceVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 @Service
 public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> implements DeviceService {
+
+    private static final String REAL_BEARPI_DEVICE_CODE = "6a44b8fdcbb0cf6bb96ad1a1_bearpi_001";
 
     private final PlotService plotService;
     private final AlarmService alarmService;
@@ -37,14 +44,21 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
     @Override
     public boolean updateHeartbeatByDeviceCode(String deviceCode) {
         Device device = getByDeviceCode(deviceCode);
+        if (device == null) {
+            return false;
+        }
+
         LambdaUpdateWrapper<Device> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(Device::getDeviceCode, deviceCode)
-                .set(Device::getStatus, "ONLINE")
                 .set(Device::getLastHeartbeat, LocalDateTime.now())
                 .set(Device::getUpdatedAt, LocalDateTime.now());
 
+        if (!"DISABLED".equalsIgnoreCase(device.getStatus())) {
+            wrapper.set(Device::getStatus, "ONLINE");
+        }
+
         boolean updated = this.update(wrapper);
-        if (updated && device != null) {
+        if (updated && !"DISABLED".equalsIgnoreCase(device.getStatus())) {
             alarmService.recoverActiveDeviceOffline(device.getId());
         }
         return updated;
@@ -56,6 +70,37 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         wrapper.eq(Device::getPlotId, plotId)
                 .orderByDesc(Device::getCreatedAt);
         return this.list(wrapper);
+    }
+
+    @Override
+    public List<DeviceVO> listDevices(String keyword, Long plotId, String status) {
+        return this.list(buildQueryWrapper(keyword, plotId, status))
+                .stream()
+                .map(this::toDeviceVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<DeviceVO> pageDevices(String keyword, Long plotId, String status, Integer page, Integer size) {
+        long current = page == null || page < 1 ? 1L : page.longValue();
+        long pageSize = size == null || size < 1 ? 10L : size.longValue();
+
+        Page<Device> sourcePage = this.page(new Page<>(current, pageSize), buildQueryWrapper(keyword, plotId, status));
+        Page<DeviceVO> result = new Page<>(sourcePage.getCurrent(), sourcePage.getSize(), sourcePage.getTotal());
+        result.setRecords(sourcePage.getRecords()
+                .stream()
+                .map(this::toDeviceVO)
+                .collect(Collectors.toList()));
+        return result;
+    }
+
+    @Override
+    public DeviceVO getDeviceDetail(Long id) {
+        Device device = this.getById(id);
+        if (device == null) {
+            throw new IllegalArgumentException("设备不存在：" + id);
+        }
+        return toDeviceVO(device);
     }
 
     @Override
@@ -75,7 +120,9 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         device.setDeviceCode(dto.getDeviceCode());
         device.setDeviceName(dto.getDeviceName());
         device.setDeviceType(dto.getDeviceType());
-        device.setStatus(dto.getStatus() == null || dto.getStatus().isBlank() ? "OFFLINE" : dto.getStatus());
+        device.setStatus(dto.getStatus() == null || dto.getStatus().isBlank()
+                ? "OFFLINE"
+                : normalizeStatus(dto.getStatus()));
         device.setSignalStrength(dto.getSignalStrength());
         device.setBattery(dto.getBattery());
         device.setCreatedAt(LocalDateTime.now());
@@ -106,7 +153,9 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         device.setDeviceCode(dto.getDeviceCode());
         device.setDeviceName(dto.getDeviceName());
         device.setDeviceType(dto.getDeviceType());
-        device.setStatus(dto.getStatus() == null || dto.getStatus().isBlank() ? device.getStatus() : dto.getStatus());
+        if (dto.getStatus() != null && !dto.getStatus().isBlank()) {
+            device.setStatus(normalizeStatus(dto.getStatus()));
+        }
         device.setSignalStrength(dto.getSignalStrength());
         device.setBattery(dto.getBattery());
         device.setUpdatedAt(LocalDateTime.now());
@@ -158,10 +207,113 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         return device;
     }
 
+    @Override
+    @Transactional
+    public Device updateStatus(Long id, String status) {
+        Device device = this.getById(id);
+        if (device == null) {
+            throw new IllegalArgumentException("设备不存在：" + id);
+        }
+
+        device.setStatus(normalizeStatus(status));
+        device.setUpdatedAt(LocalDateTime.now());
+        this.updateById(device);
+        return device;
+    }
+
+    @Override
+    @Transactional
+    public Device disableDevice(Long id) {
+        return updateStatus(id, "DISABLED");
+    }
+
+    @Override
+    @Transactional
+    public Device enableDevice(Long id) {
+        return updateStatus(id, "OFFLINE");
+    }
+
     private void checkPlotExists(Long plotId) {
         Plot plot = plotService.getById(plotId);
         if (plot == null) {
             throw new IllegalArgumentException("地块不存在：" + plotId);
         }
+    }
+
+    private LambdaQueryWrapper<Device> buildQueryWrapper(String keyword, Long plotId, String status) {
+        LambdaQueryWrapper<Device> wrapper = new LambdaQueryWrapper<>();
+
+        if (keyword != null && !keyword.isBlank()) {
+            String value = keyword.trim();
+            wrapper.and(query -> query.like(Device::getDeviceCode, value)
+                    .or()
+                    .like(Device::getDeviceName, value));
+        }
+
+        if (plotId != null) {
+            wrapper.eq(Device::getPlotId, plotId);
+        }
+
+        if (status != null && !status.isBlank()) {
+            wrapper.eq(Device::getStatus, normalizeStatus(status));
+        }
+
+        wrapper.orderByDesc(Device::getCreatedAt);
+        return wrapper;
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("设备状态不能为空");
+        }
+
+        String value = status.trim().toUpperCase(Locale.ROOT);
+        if (!"ONLINE".equals(value) && !"OFFLINE".equals(value) && !"DISABLED".equals(value)) {
+            throw new IllegalArgumentException("设备状态只支持 ONLINE/OFFLINE/DISABLED");
+        }
+        return value;
+    }
+
+    private DeviceVO toDeviceVO(Device device) {
+        DeviceVO vo = new DeviceVO();
+        vo.setId(device.getId());
+        vo.setDeviceCode(device.getDeviceCode());
+        vo.setDeviceSn(device.getDeviceCode());
+        vo.setDeviceName(device.getDeviceName());
+        vo.setDeviceType(device.getDeviceType());
+        vo.setPlotId(device.getPlotId());
+        vo.setStatus(device.getStatus());
+        vo.setLastHeartbeat(device.getLastHeartbeat());
+        vo.setSignalStrength(device.getSignalStrength());
+        vo.setBattery(device.getBattery());
+        vo.setRegisterTime(device.getCreatedAt());
+        vo.setCreatedAt(device.getCreatedAt());
+        vo.setUpdatedAt(device.getUpdatedAt());
+
+        DeviceCapabilitiesVO capabilities = buildCapabilities(device);
+        vo.setCapabilities(capabilities);
+        vo.setTelemetryEnabled(capabilities.getTelemetry());
+        vo.setPumpControllable(capabilities.getPumpControl());
+        vo.setLightControllable(capabilities.getLightControl());
+        return vo;
+    }
+
+    private DeviceCapabilitiesVO buildCapabilities(Device device) {
+        String deviceType = device.getDeviceType() == null ? "" : device.getDeviceType().toUpperCase(Locale.ROOT);
+        boolean isRealBearPi = REAL_BEARPI_DEVICE_CODE.equals(device.getDeviceCode()) || "BEARPI".equals(deviceType);
+        boolean soilSensor = deviceType.contains("SOIL");
+        boolean sensor = deviceType.contains("SENSOR") || soilSensor || isRealBearPi;
+        boolean pumpController = deviceType.contains("PUMP") || isRealBearPi;
+        boolean lightController = deviceType.contains("LIGHT") || isRealBearPi;
+
+        DeviceCapabilitiesVO capabilities = new DeviceCapabilitiesVO();
+        capabilities.setTelemetry(sensor || isRealBearPi);
+        capabilities.setPumpControl(pumpController);
+        capabilities.setLightControl(lightController);
+        capabilities.setSoilMoisture(soilSensor || isRealBearPi);
+        capabilities.setAirTemperature(sensor || isRealBearPi);
+        capabilities.setAirHumidity(sensor || isRealBearPi);
+        capabilities.setIlluminance(sensor || isRealBearPi);
+        return capabilities;
     }
 }

@@ -62,6 +62,10 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
             throw new IllegalArgumentException("设备不存在：" + deviceCode);
         }
 
+        if ("DISABLED".equalsIgnoreCase(device.getStatus())) {
+            throw new IllegalArgumentException("设备已停用，不能下发控制命令：" + deviceCode);
+        }
+
         if ("PUMP_ON".equals(commandType)) {
             waterUsageLimitService.checkBeforePumpOn(device);
         }

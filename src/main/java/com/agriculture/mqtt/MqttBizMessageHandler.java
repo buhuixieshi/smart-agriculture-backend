@@ -30,6 +30,7 @@ import java.util.Map;
 public class MqttBizMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(MqttBizMessageHandler.class);
+    private static final String REAL_BEARPI_DEVICE_CODE = "6a44b8fdcbb0cf6bb96ad1a1_bearpi_001";
 
     private final MqttProperties mqttProperties;
     private final ObjectMapper objectMapper;
@@ -68,8 +69,8 @@ public class MqttBizMessageHandler {
             return;
         }
 
-        if (topic.equals(mqttProperties.getTopics().getTelemetry())) {
-            handleTelemetry(payload);
+        if (isTelemetryTopic(topic)) {
+            handleTelemetry(topic, payload);
         } else if (topic.equals(mqttProperties.getTopics().getHeartbeat())) {
             handleHeartbeat(payload);
         } else if (topic.equals(mqttProperties.getTopics().getControlReply())) {
@@ -79,49 +80,179 @@ public class MqttBizMessageHandler {
         }
     }
 
-    private void handleTelemetry(String payload) {
+    private void handleTelemetry(String topic, String payload) {
         try {
             JsonNode root = objectMapper.readTree(payload);
 
-            String deviceCode = getText(root, "deviceId", "deviceCode");
-            if (deviceCode == null || deviceCode.isBlank()) {
+            String deviceCode = getText(root, "deviceCode", "device_code", "code");
+            String deviceId = getText(root, "deviceId", "device_id");
+            if ((deviceCode == null || deviceCode.isBlank()) && (deviceId == null || deviceId.isBlank())) {
                 log.warn("Telemetry payload missing deviceId/deviceCode: {}", payload);
                 return;
             }
 
-            Device device = deviceService.getByDeviceCode(deviceCode);
+            Device device = resolveTelemetryDevice(deviceCode, deviceId);
             if (device == null) {
-                log.warn("Telemetry device not found, deviceCode={}", deviceCode);
+                log.warn("Telemetry device not found, deviceCode={}, deviceId={}", deviceCode, deviceId);
                 return;
             }
 
             if (device.getPlotId() == null) {
-                log.warn("Telemetry device has no plotId, deviceCode={}", deviceCode);
+                log.warn("Telemetry device has no plotId, deviceCode={}", device.getDeviceCode());
                 return;
             }
 
             JsonNode data = root.hasNonNull("data") ? root.get("data") : root;
+            boolean soilHumidityPayload = isSoilHumidityPayload(topic, root, data);
+            BigDecimal soilMoisture = getDecimal(data,
+                    "soilMoisture", "soil_moisture", "soilHumidity", "soil_humidity");
+            if (soilMoisture == null && soilHumidityPayload) {
+                soilMoisture = getDecimal(data, "humidity", "value");
+            }
 
             TelemetryData telemetry = new TelemetryData();
             telemetry.setDeviceId(device.getId());
             telemetry.setPlotId(device.getPlotId());
-            telemetry.setSoilMoisture(getDecimal(data, "soilMoisture", "soil_moisture"));
+            telemetry.setDeviceCode(device.getDeviceCode());
+            telemetry.setSoilMoisture(soilMoisture);
             telemetry.setAirTemperature(getDecimal(data, "airTemperature", "temperature", "air_temperature", "Temp"));
-            telemetry.setAirHumidity(getDecimal(data, "airHumidity", "humidity", "air_humidity", "Humi"));
+            telemetry.setAirHumidity(soilHumidityPayload
+                    ? getDecimal(data, "airHumidity", "air_humidity", "Humi")
+                    : getDecimal(data, "airHumidity", "humidity", "air_humidity", "Humi"));
             telemetry.setIlluminance(getDecimal(data, "illuminance", "light", "lux", "lightIntensity", "LightIntensity"));
             telemetry.setPumpStatus(getText(data, "pumpStatus", "pump_status", "motor_status", "motorStatus", "MotorStatus"));
             telemetry.setLightStatus(getText(data, "lightStatus", "light_status", "LightStatus", "light_status_value"));
             telemetry.setCollectedAt(parseCollectedAt(root));
 
+            fillMissingTelemetryFields(telemetry);
             telemetryService.save(telemetry);
-            deviceService.updateHeartbeatByDeviceCode(deviceCode);
+            deviceService.updateHeartbeatByDeviceCode(device.getDeviceCode());
             alarmRuleService.checkTelemetry(telemetry);
             pushTelemetry(telemetry);
 
-            log.info("Telemetry saved, deviceCode={}, telemetryId={}", deviceCode, telemetry.getId());
+            log.info("Telemetry saved, topic={}, deviceCode={}, telemetryId={}, soilMoisture={}",
+                    topic, device.getDeviceCode(), telemetry.getId(), telemetry.getSoilMoisture());
         } catch (Exception e) {
             log.error("Handle telemetry failed, payload={}", payload, e);
         }
+    }
+
+    private boolean isTelemetryTopic(String topic) {
+        String telemetryTopic = mqttProperties.getTopics().getTelemetry();
+        return topic.equals(telemetryTopic) || topic.startsWith(telemetryTopic + "/");
+    }
+
+    private void fillMissingTelemetryFields(TelemetryData telemetry) {
+        TelemetryData latest = getLatestTelemetry(telemetry);
+        if (latest == null) {
+            return;
+        }
+
+        if (telemetry.getDeviceCode() == null) {
+            telemetry.setDeviceCode(latest.getDeviceCode());
+        }
+        if (telemetry.getSoilMoisture() == null) {
+            telemetry.setSoilMoisture(latest.getSoilMoisture());
+        }
+        if (telemetry.getAirTemperature() == null) {
+            telemetry.setAirTemperature(latest.getAirTemperature());
+        }
+        if (telemetry.getAirHumidity() == null) {
+            telemetry.setAirHumidity(latest.getAirHumidity());
+        }
+        if (telemetry.getIlluminance() == null) {
+            telemetry.setIlluminance(latest.getIlluminance());
+        }
+        if (telemetry.getPumpStatus() == null) {
+            telemetry.setPumpStatus(latest.getPumpStatus());
+        }
+        if (telemetry.getLightStatus() == null) {
+            telemetry.setLightStatus(latest.getLightStatus());
+        }
+    }
+
+    private TelemetryData getLatestTelemetry(TelemetryData telemetry) {
+        if (telemetry.getPlotId() == null) {
+            return null;
+        }
+
+        LambdaQueryWrapper<TelemetryData> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TelemetryData::getPlotId, telemetry.getPlotId());
+
+        if (telemetry.getDeviceId() != null) {
+            wrapper.eq(TelemetryData::getDeviceId, telemetry.getDeviceId());
+        }
+
+        wrapper.orderByDesc(TelemetryData::getCollectedAt)
+                .orderByDesc(TelemetryData::getId)
+                .last("LIMIT 1");
+
+        return telemetryService.getOne(wrapper, false);
+    }
+
+    private Device resolveTelemetryDevice(String deviceCode, String deviceId) {
+        Device device = findDevice(deviceCode);
+        if (device != null) {
+            return device;
+        }
+
+        device = findDevice(deviceId);
+        if (device != null) {
+            return device;
+        }
+
+        if (deviceId != null && !deviceId.isBlank()) {
+            try {
+                device = deviceService.getById(Long.parseLong(deviceId));
+                if (device != null) {
+                    return device;
+                }
+            } catch (NumberFormatException ignored) {
+                // deviceId can also be a string code from simulators.
+            }
+        }
+
+        device = deviceService.getByDeviceCode(REAL_BEARPI_DEVICE_CODE);
+        if (device != null) {
+            log.warn("Telemetry simulator device not found, fallback to BearPi device. deviceCode={}, deviceId={}, fallback={}",
+                    deviceCode, deviceId, REAL_BEARPI_DEVICE_CODE);
+        }
+        return device;
+    }
+
+    private Device findDevice(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
+        return deviceService.getByDeviceCode(deviceCode);
+    }
+
+    private boolean isSoilHumidityPayload(String topic, JsonNode root, JsonNode data) {
+        String lowerTopic = topic == null ? "" : topic.toLowerCase();
+        if (lowerTopic.endsWith("/humidity") || lowerTopic.endsWith("/soil_moisture")) {
+            return true;
+        }
+
+        if (hasAny(data, "soilMoisture", "soil_moisture", "soilHumidity", "soil_humidity")) {
+            return true;
+        }
+
+        String sensorType = getText(root, "sensorType", "sensor_type", "type");
+        if (sensorType != null) {
+            String value = sensorType.toLowerCase();
+            if (value.contains("soil") || value.contains("moisture")) {
+                return true;
+            }
+        }
+
+        String deviceId = getText(root, "deviceId", "device_id");
+        if (deviceId != null && deviceId.matches("\\d+") && data != null && data.hasNonNull("humidity")) {
+            return true;
+        }
+
+        return data != null
+                && data.hasNonNull("humidity")
+                && !hasAny(data, "airHumidity", "air_humidity", "temperature", "airTemperature", "air_temperature");
     }
 
     private void handleHeartbeat(String payload) {
@@ -229,6 +360,7 @@ public class MqttBizMessageHandler {
             data.put("id", telemetry.getId());
             data.put("plotId", telemetry.getPlotId());
             data.put("deviceId", telemetry.getDeviceId());
+            data.put("deviceCode", telemetry.getDeviceCode());
             data.put("soilMoisture", telemetry.getSoilMoisture());
             data.put("airTemperature", telemetry.getAirTemperature());
             data.put("airHumidity", telemetry.getAirHumidity());
@@ -287,5 +419,19 @@ public class MqttBizMessageHandler {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private boolean hasAny(JsonNode node, String... names) {
+        if (node == null) {
+            return false;
+        }
+
+        for (String name : names) {
+            if (node.hasNonNull(name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

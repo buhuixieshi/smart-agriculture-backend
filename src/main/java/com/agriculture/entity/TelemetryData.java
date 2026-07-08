@@ -19,6 +19,8 @@ public class TelemetryData {
 
     private Long deviceId;
 
+    private String deviceCode;
+
     private BigDecimal soilMoisture;
 
     private BigDecimal airTemperature;
