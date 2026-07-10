@@ -1,6 +1,7 @@
 package com.agriculture.service;
 
 import com.agriculture.dto.DeviceDTO;
+import com.agriculture.dto.DeviceBindDTO;
 import com.agriculture.entity.Device;
 import com.agriculture.vo.DeviceVO;
 import com.baomidou.mybatisplus.extension.service.IService;
@@ -31,6 +32,8 @@ public interface DeviceService extends IService<Device> {
     Device bindPlot(Long id, Long plotId);
 
     Device unbindPlot(Long id);
+
+    Device updatePlotBinding(DeviceBindDTO dto);
 
     Device updateStatus(Long id, String status);
 

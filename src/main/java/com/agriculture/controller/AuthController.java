@@ -50,11 +50,10 @@ public class AuthController {
         return Result.ok(authService.registerFace(authentication.getName(), file));
     }
 
-    @PostMapping("/face/login")
-    @OperationLogRecord(type = "FACE_LOGIN", target = "user", detail = "face login")
-    public Result<LoginVO> faceLogin(@RequestParam("username") String username,
-                                     @RequestParam("file") MultipartFile file) {
-        return Result.ok(authService.faceLogin(username, file));
+    @PostMapping("/face/login-auto")
+    @OperationLogRecord(type = "FACE_LOGIN_AUTO", target = "user", detail = "face login auto")
+    public Result<LoginVO> faceLoginAuto(@RequestParam("file") MultipartFile file) {
+        return Result.ok(authService.faceLoginAuto(file));
     }
 
     @GetMapping("/face/status")

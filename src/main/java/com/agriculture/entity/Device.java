@@ -1,6 +1,8 @@
 package com.agriculture.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -20,6 +22,7 @@ public class Device {
 
     private String deviceType;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long plotId;
 
     private String status;

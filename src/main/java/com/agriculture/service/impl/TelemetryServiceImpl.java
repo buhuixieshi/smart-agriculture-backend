@@ -16,9 +16,10 @@ public class TelemetryServiceImpl extends ServiceImpl<TelemetryDataMapper, Telem
         LambdaQueryWrapper<TelemetryData> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TelemetryData::getPlotId, plotId)
                 .orderByDesc(TelemetryData::getCollectedAt)
+                .orderByDesc(TelemetryData::getId)
                 .last("LIMIT 1");
 
-        return getOne(wrapper);
+        return getOne(wrapper, false);
     }
 
     @Override
@@ -33,7 +34,8 @@ public class TelemetryServiceImpl extends ServiceImpl<TelemetryDataMapper, Telem
             wrapper.eq(TelemetryData::getDeviceId, deviceId);
         }
 
-        wrapper.orderByDesc(TelemetryData::getCollectedAt);
+        wrapper.orderByDesc(TelemetryData::getCollectedAt)
+                .orderByDesc(TelemetryData::getId);
 
         return this.page(new Page<>(page, size), wrapper);
     }

@@ -43,7 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/register").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/auth/face/login").permitAll()
+                        .requestMatchers("/api/auth/face/login-auto").permitAll()
                         .requestMatchers("/api/auth/face/status").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/ws/**").permitAll()

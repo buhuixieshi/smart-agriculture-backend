@@ -13,7 +13,7 @@ public interface AuthService {
 
     Boolean registerFace(String username, MultipartFile file);
 
-    LoginVO faceLogin(String username, MultipartFile file);
+    LoginVO faceLoginAuto(MultipartFile file);
 
     Boolean hasFace(String username);
 }

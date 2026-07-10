@@ -68,25 +68,28 @@ public class HttpFaceModelClient implements FaceModelClient {
     }
 
     @Override
-    public boolean compareFace(MultipartFile file, String savedFeature) {
+    public Double calculateDistance(MultipartFile file, String savedFeature) {
         ensureEnabled();
 
         try {
-            JsonNode root = postMultipart(properties.getUrl() + "/face/compare", file, savedFeature);
+            JsonNode root = postMultipart(properties.getUrl() + "/face/distance", file, savedFeature);
 
             Integer code = firstInt(root, "code");
             if (code != null && code != 200) {
-                throw new BusinessException(400, firstTextOrDefault(root, "face compare failed",
+                throw new BusinessException(400, firstTextOrDefault(root, "face distance calculate failed",
                         "msg", "message", "error", "reason"));
             }
 
-            Boolean match = firstBoolean(root, "match", "matched", "success");
-            if (match == null) {
+            Double distance = firstDouble(root, "distance");
+            if (distance == null) {
                 JsonNode data = root.path("data");
-                match = firstBoolean(data, "match", "matched", "success");
+                distance = firstDouble(data, "distance");
+            }
+            if (distance == null) {
+                throw new BusinessException(400, "face distance calculate failed");
             }
 
-            return Boolean.TRUE.equals(match);
+            return distance;
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -165,23 +168,12 @@ public class HttpFaceModelClient implements FaceModelClient {
         return value == null || value.isNull() ? null : value.asInt();
     }
 
-    private Boolean firstBoolean(JsonNode node, String... names) {
+    private Double firstDouble(JsonNode node, String name) {
         if (node == null) {
             return null;
         }
-        for (String name : names) {
-            JsonNode value = node.get(name);
-            if (value != null && !value.isNull()) {
-                if (value.isBoolean()) {
-                    return value.asBoolean();
-                }
-                if (value.isTextual()) {
-                    return "true".equalsIgnoreCase(value.asText())
-                            || "success".equalsIgnoreCase(value.asText())
-                            || "matched".equalsIgnoreCase(value.asText());
-                }
-            }
-        }
-        return null;
+        JsonNode value = node.get(name);
+        return value == null || value.isNull() ? null : value.asDouble();
     }
+
 }

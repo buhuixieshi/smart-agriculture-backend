@@ -115,6 +115,10 @@ public class LightControlServiceImpl implements LightControlService {
             return;
         }
 
+        if (hasAbnormalTelemetryValue(telemetry)) {
+            return;
+        }
+
         LightStrategy strategy = safeStrategy(telemetry.getPlotId());
         if (strategy == null || !Boolean.TRUE.equals(strategy.getAutoMode())) {
             return;
@@ -267,6 +271,17 @@ public class LightControlServiceImpl implements LightControlService {
                         .in(ControlCommand::getCommandType, "LIGHT_ON", "LIGHT_OFF")
                         .ge(ControlCommand::getCreatedAt, from)
         ) > 0;
+    }
+
+    private boolean hasAbnormalTelemetryValue(TelemetryData telemetry) {
+        return isOutOfRange(telemetry.getSoilMoisture(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getAirTemperature(), new BigDecimal("-10"), new BigDecimal("80"))
+                || isOutOfRange(telemetry.getAirHumidity(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getIlluminance(), BigDecimal.ZERO, new BigDecimal("1000"));
+    }
+
+    private boolean isOutOfRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value != null && (value.compareTo(minValue) < 0 || value.compareTo(maxValue) > 0);
     }
 
     private ControlCommand latestLightCommand(String deviceCode) {

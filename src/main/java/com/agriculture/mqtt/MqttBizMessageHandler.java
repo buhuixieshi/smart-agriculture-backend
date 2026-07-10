@@ -24,6 +24,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @ConditionalOnProperty(prefix = "mqtt", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -31,6 +33,11 @@ public class MqttBizMessageHandler {
 
     private static final Logger log = LoggerFactory.getLogger(MqttBizMessageHandler.class);
     private static final String REAL_BEARPI_DEVICE_CODE = "6a44b8fdcbb0cf6bb96ad1a1_bearpi_001";
+    private static final Pattern DEVICE_CODE_PLOT_SUFFIX = Pattern.compile(".*_(\\d+)$");
+    private static final BigDecimal DECIMAL_5_2_MAX = new BigDecimal("999.99");
+    private static final BigDecimal DECIMAL_5_2_MIN = new BigDecimal("-999.99");
+    private static final BigDecimal DECIMAL_10_2_MAX = new BigDecimal("99999999.99");
+    private static final BigDecimal DECIMAL_10_2_MIN = new BigDecimal("-99999999.99");
 
     private final MqttProperties mqttProperties;
     private final ObjectMapper objectMapper;
@@ -82,7 +89,7 @@ public class MqttBizMessageHandler {
 
     private void handleTelemetry(String topic, String payload) {
         try {
-            JsonNode root = objectMapper.readTree(payload);
+            JsonNode root = objectMapper.readTree(normalizeJsonPayload(payload));
 
             String deviceCode = getText(root, "deviceCode", "device_code", "code");
             String deviceId = getText(root, "deviceId", "device_id");
@@ -91,9 +98,11 @@ public class MqttBizMessageHandler {
                 return;
             }
 
-            Device device = resolveTelemetryDevice(deviceCode, deviceId);
+            Long payloadPlotId = getLong(root, "plotId", "plot_id");
+            Device device = resolveTelemetryDevice(deviceCode, deviceId, payloadPlotId);
             if (device == null) {
-                log.warn("Telemetry device not found, deviceCode={}, deviceId={}", deviceCode, deviceId);
+                log.warn("Telemetry device not found, deviceCode={}, deviceId={}, plotId={}",
+                        deviceCode, deviceId, payloadPlotId);
                 return;
             }
 
@@ -125,8 +134,36 @@ public class MqttBizMessageHandler {
             telemetry.setCollectedAt(parseCollectedAt(root));
 
             fillMissingTelemetryFields(telemetry);
+            if (hasAbnormalTelemetryValue(telemetry)) {
+                deviceService.updateHeartbeatByDeviceCode(device.getDeviceCode());
+                pushDeviceStatus(device, "ONLINE");
+                if (isTelemetryStorable(telemetry)) {
+                    telemetryService.save(telemetry);
+                    pushTelemetry(telemetry);
+                    log.warn("Abnormal telemetry saved for frontend monitoring, topic={}, deviceCode={}, telemetryId={}, soilMoisture={}, airTemperature={}, airHumidity={}, illuminance={}",
+                            topic,
+                            device.getDeviceCode(),
+                            telemetry.getId(),
+                            telemetry.getSoilMoisture(),
+                            telemetry.getAirTemperature(),
+                            telemetry.getAirHumidity(),
+                            telemetry.getIlluminance());
+                } else {
+                    log.warn("Abnormal telemetry is out of database numeric range and will not be saved, topic={}, deviceCode={}, soilMoisture={}, airTemperature={}, airHumidity={}, illuminance={}",
+                            topic,
+                            device.getDeviceCode(),
+                            telemetry.getSoilMoisture(),
+                            telemetry.getAirTemperature(),
+                            telemetry.getAirHumidity(),
+                            telemetry.getIlluminance());
+                }
+                alarmRuleService.checkTelemetry(telemetry);
+                return;
+            }
+
             telemetryService.save(telemetry);
             deviceService.updateHeartbeatByDeviceCode(device.getDeviceCode());
+            pushDeviceStatus(device, "ONLINE");
             alarmRuleService.checkTelemetry(telemetry);
             pushTelemetry(telemetry);
 
@@ -137,9 +174,34 @@ public class MqttBizMessageHandler {
         }
     }
 
+    private String normalizeJsonPayload(String payload) {
+        if (payload == null) {
+            return null;
+        }
+
+        return payload
+                .replace('\uFEFF', ' ')
+                .replace('\uFF0C', ',')
+                .replace('\uFF1A', ':')
+                .replace('\u201C', '"')
+                .replace('\u201D', '"')
+                .replace('\u2018', '\'')
+                .replace('\u2019', '\'');
+    }
+
     private boolean isTelemetryTopic(String topic) {
         String telemetryTopic = mqttProperties.getTopics().getTelemetry();
-        return topic.equals(telemetryTopic) || topic.startsWith(telemetryTopic + "/");
+        if (topic.equals(telemetryTopic) || topic.startsWith(telemetryTopic + "/")) {
+            return true;
+        }
+
+        int lastSlash = telemetryTopic == null ? -1 : telemetryTopic.lastIndexOf('/');
+        if (lastSlash <= 0) {
+            return false;
+        }
+
+        String telemetryParent = telemetryTopic.substring(0, lastSlash + 1);
+        return topic.startsWith(telemetryParent);
     }
 
     private void fillMissingTelemetryFields(TelemetryData telemetry) {
@@ -190,10 +252,14 @@ public class MqttBizMessageHandler {
         return telemetryService.getOne(wrapper, false);
     }
 
-    private Device resolveTelemetryDevice(String deviceCode, String deviceId) {
+    private Device resolveTelemetryDevice(String deviceCode, String deviceId, Long payloadPlotId) {
         Device device = findDevice(deviceCode);
         if (device != null) {
             return device;
+        }
+
+        if (deviceCode != null && !deviceCode.isBlank()) {
+            return createSimulatorDevice(deviceCode, payloadPlotId);
         }
 
         device = findDevice(deviceId);
@@ -218,6 +284,46 @@ public class MqttBizMessageHandler {
                     deviceCode, deviceId, REAL_BEARPI_DEVICE_CODE);
         }
         return device;
+    }
+
+    private Device createSimulatorDevice(String deviceCode, Long payloadPlotId) {
+        Long plotId = payloadPlotId != null ? payloadPlotId : parsePlotIdFromDeviceCode(deviceCode);
+        if (plotId == null) {
+            log.warn("Skip auto creating simulator device, plotId cannot be resolved, deviceCode={}", deviceCode);
+            return null;
+        }
+
+        Device device = new Device();
+        device.setDeviceCode(deviceCode);
+        device.setDeviceName("模拟传感器-" + plotId);
+        device.setDeviceType("BEARPI_SIMULATOR");
+        device.setPlotId(plotId);
+        device.setStatus("ONLINE");
+        device.setLastHeartbeat(LocalDateTime.now());
+        device.setCreatedAt(LocalDateTime.now());
+        device.setUpdatedAt(LocalDateTime.now());
+
+        deviceService.save(device);
+        log.info("Simulator device auto created, deviceCode={}, plotId={}, deviceId={}",
+                device.getDeviceCode(), device.getPlotId(), device.getId());
+        return device;
+    }
+
+    private Long parsePlotIdFromDeviceCode(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
+
+        Matcher matcher = DEVICE_CODE_PLOT_SUFFIX.matcher(deviceCode.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        try {
+            return Long.parseLong(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Device findDevice(String deviceCode) {
@@ -380,6 +486,26 @@ public class MqttBizMessageHandler {
         }
     }
 
+    private void pushDeviceStatus(Device device, String status) {
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("deviceId", device.getId());
+            data.put("deviceCode", device.getDeviceCode());
+            data.put("plotId", device.getPlotId());
+            data.put("status", status);
+            data.put("lastHeartbeat", LocalDateTime.now().toString());
+
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", "DEVICE_STATUS");
+            message.put("plotId", device.getPlotId());
+            message.put("data", data);
+
+            realtimeWebSocketHandler.sendToAll(objectMapper.writeValueAsString(message));
+        } catch (Exception e) {
+            log.warn("Push device status websocket failed, deviceCode={}", device.getDeviceCode(), e);
+        }
+    }
+
     private LocalDateTime parseCollectedAt(JsonNode root) {
         JsonNode timestamp = root.get("timestamp");
 
@@ -416,6 +542,41 @@ public class MqttBizMessageHandler {
 
         try {
             return new BigDecimal(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean hasAbnormalTelemetryValue(TelemetryData telemetry) {
+        return isOutOfRange(telemetry.getSoilMoisture(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getAirTemperature(), new BigDecimal("-10"), new BigDecimal("80"))
+                || isOutOfRange(telemetry.getAirHumidity(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getIlluminance(), BigDecimal.ZERO, new BigDecimal("1000"));
+    }
+
+    private boolean isOutOfRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value != null && (value.compareTo(minValue) < 0 || value.compareTo(maxValue) > 0);
+    }
+
+    private boolean isTelemetryStorable(TelemetryData telemetry) {
+        return isInDatabaseRange(telemetry.getSoilMoisture(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getAirTemperature(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getAirHumidity(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getIlluminance(), DECIMAL_10_2_MIN, DECIMAL_10_2_MAX);
+    }
+
+    private boolean isInDatabaseRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value == null || (value.compareTo(minValue) >= 0 && value.compareTo(maxValue) <= 0);
+    }
+
+    private Long getLong(JsonNode node, String... names) {
+        String text = getText(node, names);
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Long.parseLong(text);
         } catch (NumberFormatException e) {
             return null;
         }

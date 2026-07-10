@@ -12,6 +12,8 @@ import com.agriculture.service.IrrigationStatsService;
 import com.agriculture.service.IrrigationStrategyService;
 import com.agriculture.service.TelemetryService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,6 +24,7 @@ import java.util.List;
 @Service
 public class AutoIrrigationServiceImpl implements AutoIrrigationService {
 
+    private static final Logger log = LoggerFactory.getLogger(AutoIrrigationServiceImpl.class);
     private static final int RECENT_COMMAND_SECONDS = 60;
 
     private final IrrigationStrategyService irrigationStrategyService;
@@ -48,6 +51,17 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
                 || telemetryData.getPlotId() == null
                 || telemetryData.getDeviceId() == null
                 || telemetryData.getSoilMoisture() == null) {
+            return;
+        }
+
+        if (hasAbnormalTelemetryValue(telemetryData)) {
+            log.warn("Auto irrigation skipped because telemetry is abnormal, plotId={}, deviceId={}, soilMoisture={}, airTemperature={}, airHumidity={}, illuminance={}",
+                    telemetryData.getPlotId(),
+                    telemetryData.getDeviceId(),
+                    telemetryData.getSoilMoisture(),
+                    telemetryData.getAirTemperature(),
+                    telemetryData.getAirHumidity(),
+                    telemetryData.getIlluminance());
             return;
         }
 
@@ -99,7 +113,7 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
                 continue;
             }
 
-            controlService.sendCommand(record.getDeviceCode(), "PUMP_OFF", "OFF", "AUTO");
+            sendAutoCommand(record.getDeviceCode(), "PUMP_OFF", "OFF");
         }
     }
 
@@ -113,7 +127,7 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
             return;
         }
 
-        controlService.sendCommand(device.getDeviceCode(), "PUMP_OFF", "OFF", "AUTO");
+        sendAutoCommand(device.getDeviceCode(), "PUMP_OFF", "OFF");
     }
 
     private void startIfContinuousLow(Device device, IrrigationStrategy strategy, TelemetryData telemetryData) {
@@ -132,7 +146,16 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
             return;
         }
 
-        controlService.sendCommand(device.getDeviceCode(), "PUMP_ON", "ON", "AUTO");
+        sendAutoCommand(device.getDeviceCode(), "PUMP_ON", "ON");
+    }
+
+    private void sendAutoCommand(String deviceCode, String commandType, String commandValue) {
+        try {
+            controlService.sendCommand(deviceCode, commandType, commandValue, "AUTO");
+        } catch (IllegalArgumentException e) {
+            log.warn("Auto irrigation command skipped, deviceCode={}, commandType={}, reason={}",
+                    deviceCode, commandType, e.getMessage());
+        }
     }
 
     private boolean isContinuousLowMoisture(Long plotId, BigDecimal moistureMin, int consecutiveThreshold) {
@@ -198,6 +221,17 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
                         .in(ControlCommand::getStatus, "PENDING", "SENT", "SUCCESS")
                         .ge(ControlCommand::getCreatedAt, after)
         ) > 0;
+    }
+
+    private boolean hasAbnormalTelemetryValue(TelemetryData telemetry) {
+        return isOutOfRange(telemetry.getSoilMoisture(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getAirTemperature(), new BigDecimal("-10"), new BigDecimal("80"))
+                || isOutOfRange(telemetry.getAirHumidity(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getIlluminance(), BigDecimal.ZERO, new BigDecimal("1000"));
+    }
+
+    private boolean isOutOfRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value != null && (value.compareTo(minValue) < 0 || value.compareTo(maxValue) > 0);
     }
 
     private int resolveConsecutiveThreshold(Integer consecutiveThreshold) {

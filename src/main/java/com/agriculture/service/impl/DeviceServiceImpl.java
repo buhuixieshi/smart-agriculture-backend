@@ -1,5 +1,6 @@
 package com.agriculture.service.impl;
 
+import com.agriculture.dto.DeviceBindDTO;
 import com.agriculture.dto.DeviceDTO;
 import com.agriculture.entity.Device;
 import com.agriculture.entity.Plot;
@@ -36,9 +37,12 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
 
     @Override
     public Device getByDeviceCode(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
         LambdaQueryWrapper<Device> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Device::getDeviceCode, deviceCode);
-        return this.getOne(wrapper);
+        wrapper.eq(Device::getDeviceCode, deviceCode.trim());
+        return this.getOne(wrapper, false);
     }
 
     @Override
@@ -96,10 +100,7 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
 
     @Override
     public DeviceVO getDeviceDetail(Long id) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
-        }
+        Device device = requireDevice(id);
         return toDeviceVO(device);
     }
 
@@ -108,7 +109,7 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
     public Device createDevice(DeviceDTO dto) {
         Device exists = getByDeviceCode(dto.getDeviceCode());
         if (exists != null) {
-            throw new IllegalArgumentException("设备编号已存在：" + dto.getDeviceCode());
+            throw new IllegalArgumentException("\u8bbe\u5907\u7f16\u53f7\u5df2\u5b58\u5728\uff1a" + dto.getDeviceCode());
         }
 
         if (dto.getPlotId() != null) {
@@ -135,14 +136,11 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
     @Override
     @Transactional
     public Device updateDevice(Long id, DeviceDTO dto) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
-        }
+        Device device = requireDevice(id);
 
         Device exists = getByDeviceCode(dto.getDeviceCode());
         if (exists != null && !exists.getId().equals(id)) {
-            throw new IllegalArgumentException("设备编号已存在：" + dto.getDeviceCode());
+            throw new IllegalArgumentException("\u8bbe\u5907\u7f16\u53f7\u5df2\u5b58\u5728\uff1a" + dto.getDeviceCode());
         }
 
         if (dto.getPlotId() != null) {
@@ -167,53 +165,46 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
     @Override
     @Transactional
     public void deleteDevice(Long id) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
-        }
-
+        requireDevice(id);
         this.removeById(id);
     }
 
     @Override
     @Transactional
     public Device bindPlot(Long id, Long plotId) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
-        }
-
+        Device device = requireDevice(id);
         checkPlotExists(plotId);
 
-        device.setPlotId(plotId);
-        device.setUpdatedAt(LocalDateTime.now());
-
-        this.updateById(device);
-        return device;
+        return updatePlotIdPersistently(device, plotId);
     }
 
     @Override
     @Transactional
     public Device unbindPlot(Long id) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
+        Device device = requireDevice(id);
+
+        return updatePlotIdPersistently(device, null);
+    }
+
+    @Override
+    @Transactional
+    public Device updatePlotBinding(DeviceBindDTO dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("\u7ed1\u5b9a\u53c2\u6570\u4e0d\u80fd\u4e3a\u7a7a");
         }
 
-        device.setPlotId(null);
-        device.setUpdatedAt(LocalDateTime.now());
+        Device device = resolveDevice(dto.getDeviceId(), dto.getDeviceCode());
+        if (dto.getPlotId() != null) {
+            checkPlotExists(dto.getPlotId());
+        }
 
-        this.updateById(device);
-        return device;
+        return updatePlotIdPersistently(device, dto.getPlotId());
     }
 
     @Override
     @Transactional
     public Device updateStatus(Long id, String status) {
-        Device device = this.getById(id);
-        if (device == null) {
-            throw new IllegalArgumentException("设备不存在：" + id);
-        }
+        Device device = requireDevice(id);
 
         device.setStatus(normalizeStatus(status));
         device.setUpdatedAt(LocalDateTime.now());
@@ -233,10 +224,48 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         return updateStatus(id, "OFFLINE");
     }
 
+    private Device requireDevice(Long id) {
+        Device device = this.getById(id);
+        if (device == null) {
+            throw new IllegalArgumentException("\u8bbe\u5907\u4e0d\u5b58\u5728\uff1a" + id);
+        }
+        return device;
+    }
+
+    private Device resolveDevice(Long deviceId, String deviceCode) {
+        if (deviceId != null) {
+            return requireDevice(deviceId);
+        }
+
+        if (deviceCode != null && !deviceCode.isBlank()) {
+            Device device = getByDeviceCode(deviceCode.trim());
+            if (device == null) {
+                throw new IllegalArgumentException("\u8bbe\u5907\u4e0d\u5b58\u5728\uff1a" + deviceCode);
+            }
+            return device;
+        }
+
+        throw new IllegalArgumentException("deviceId\u6216deviceCode\u81f3\u5c11\u4f20\u4e00\u4e2a");
+    }
+
+    private Device updatePlotIdPersistently(Device device, Long plotId) {
+        LocalDateTime now = LocalDateTime.now();
+        this.update(
+                new LambdaUpdateWrapper<Device>()
+                        .eq(Device::getId, device.getId())
+                        .set(Device::getPlotId, plotId)
+                        .set(Device::getUpdatedAt, now)
+        );
+
+        device.setPlotId(plotId);
+        device.setUpdatedAt(now);
+        return this.getById(device.getId());
+    }
+
     private void checkPlotExists(Long plotId) {
         Plot plot = plotService.getById(plotId);
         if (plot == null) {
-            throw new IllegalArgumentException("地块不存在：" + plotId);
+            throw new IllegalArgumentException("\u5730\u5757\u4e0d\u5b58\u5728\uff1a" + plotId);
         }
     }
 
@@ -264,12 +293,12 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
 
     private String normalizeStatus(String status) {
         if (status == null || status.isBlank()) {
-            throw new IllegalArgumentException("设备状态不能为空");
+            throw new IllegalArgumentException("\u8bbe\u5907\u72b6\u6001\u4e0d\u80fd\u4e3a\u7a7a");
         }
 
         String value = status.trim().toUpperCase(Locale.ROOT);
         if (!"ONLINE".equals(value) && !"OFFLINE".equals(value) && !"DISABLED".equals(value)) {
-            throw new IllegalArgumentException("设备状态只支持 ONLINE/OFFLINE/DISABLED");
+            throw new IllegalArgumentException("\u8bbe\u5907\u72b6\u6001\u53ea\u652f\u6301 ONLINE/OFFLINE/DISABLED");
         }
         return value;
     }

@@ -6,5 +6,5 @@ public interface FaceModelClient {
 
     String extractFeature(MultipartFile file);
 
-    boolean compareFace(MultipartFile file, String savedFeature);
+    Double calculateDistance(MultipartFile file, String savedFeature);
 }

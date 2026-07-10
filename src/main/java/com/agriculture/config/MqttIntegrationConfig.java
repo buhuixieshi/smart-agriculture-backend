@@ -66,9 +66,9 @@ public class MqttIntegrationConfig {
     @Bean
     public MessageProducer mqttInbound() {
         String telemetryTopic = mqttProperties.getTopics().getTelemetry();
+        String telemetryWildcardTopic = resolveTelemetryWildcardTopic(telemetryTopic);
         String[] topics = new String[]{
-                telemetryTopic,
-                telemetryTopic + "/+",
+                telemetryWildcardTopic,
                 mqttProperties.getTopics().getHeartbeat(),
                 mqttProperties.getTopics().getControlReply()
         };
@@ -86,6 +86,19 @@ public class MqttIntegrationConfig {
         adapter.setOutputChannel(mqttInputChannel());
 
         return adapter;
+    }
+
+    private String resolveTelemetryWildcardTopic(String telemetryTopic) {
+        if (telemetryTopic == null || telemetryTopic.isBlank()) {
+            return "device/data/#";
+        }
+
+        int lastSlash = telemetryTopic.lastIndexOf('/');
+        if (lastSlash <= 0) {
+            return telemetryTopic + "/#";
+        }
+
+        return telemetryTopic.substring(0, lastSlash) + "/#";
     }
 
     @Bean

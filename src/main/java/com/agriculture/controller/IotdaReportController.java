@@ -24,6 +24,10 @@ import java.util.Map;
 public class IotdaReportController {
 
     private static final String DEFAULT_DEVICE_CODE = "6a44b8fdcbb0cf6bb96ad1a1_bearpi_001";
+    private static final BigDecimal DECIMAL_5_2_MAX = new BigDecimal("999.99");
+    private static final BigDecimal DECIMAL_5_2_MIN = new BigDecimal("-999.99");
+    private static final BigDecimal DECIMAL_10_2_MAX = new BigDecimal("99999999.99");
+    private static final BigDecimal DECIMAL_10_2_MIN = new BigDecimal("-99999999.99");
 
     private final ObjectMapper objectMapper;
     private final DeviceService deviceService;
@@ -82,6 +86,29 @@ public class IotdaReportController {
         telemetry.setCollectedAt(LocalDateTime.now());
 
         fillMissingTelemetryFields(telemetry);
+        if (hasAbnormalTelemetryValue(telemetry)) {
+            deviceService.updateHeartbeatByDeviceCode(deviceCode);
+            Long telemetryId = null;
+            if (isTelemetryStorable(telemetry)) {
+                telemetryService.save(telemetry);
+                pushWebSocket(telemetry);
+                telemetryId = telemetry.getId();
+            }
+            alarmRuleService.checkTelemetry(telemetry);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("code", 200);
+            result.put("message", telemetryId == null
+                    ? "hardware telemetry abnormal, alarm created"
+                    : "hardware telemetry abnormal, saved and alarm created");
+            result.put("telemetryId", telemetryId);
+            result.put("soilMoisture", telemetry.getSoilMoisture());
+            result.put("airTemperature", telemetry.getAirTemperature());
+            result.put("airHumidity", telemetry.getAirHumidity());
+            result.put("illuminance", telemetry.getIlluminance());
+            return result;
+        }
+
         telemetryService.save(telemetry);
         deviceService.updateHeartbeatByDeviceCode(deviceCode);
         alarmRuleService.checkTelemetry(telemetry);
@@ -233,6 +260,28 @@ public class IotdaReportController {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private boolean hasAbnormalTelemetryValue(TelemetryData telemetry) {
+        return isOutOfRange(telemetry.getSoilMoisture(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getAirTemperature(), new BigDecimal("-10"), new BigDecimal("80"))
+                || isOutOfRange(telemetry.getAirHumidity(), BigDecimal.ZERO, new BigDecimal("100"))
+                || isOutOfRange(telemetry.getIlluminance(), BigDecimal.ZERO, new BigDecimal("1000"));
+    }
+
+    private boolean isOutOfRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value != null && (value.compareTo(minValue) < 0 || value.compareTo(maxValue) > 0);
+    }
+
+    private boolean isTelemetryStorable(TelemetryData telemetry) {
+        return isInDatabaseRange(telemetry.getSoilMoisture(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getAirTemperature(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getAirHumidity(), DECIMAL_5_2_MIN, DECIMAL_5_2_MAX)
+                && isInDatabaseRange(telemetry.getIlluminance(), DECIMAL_10_2_MIN, DECIMAL_10_2_MAX);
+    }
+
+    private boolean isInDatabaseRange(BigDecimal value, BigDecimal minValue, BigDecimal maxValue) {
+        return value == null || (value.compareTo(minValue) >= 0 && value.compareTo(maxValue) <= 0);
     }
 
     private boolean hasAny(JsonNode node, String... names) {

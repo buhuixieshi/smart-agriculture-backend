@@ -16,6 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @Service
 public class AuthServiceImpl implements AuthService {
 
@@ -111,28 +113,35 @@ public class AuthServiceImpl implements AuthService {
         return userFaceMapper.updateById(exist) > 0;
     }
 
-    @Override
-    public LoginVO faceLogin(String username, MultipartFile file) {
-        if (username == null || username.isBlank()) {
-            throw new BusinessException(400, "username is required");
-        }
+    public LoginVO faceLoginAuto(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(400, "face image is required");
         }
 
-        User user = getUserByUsername(username);
-
-        LambdaQueryWrapper<UserFace> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(UserFace::getUserId, user.getId());
-
-        UserFace userFace = userFaceMapper.selectOne(wrapper);
-        if (userFace == null) {
-            throw new BusinessException(400, "user face is not registered");
+        List<UserFace> faceList = userFaceMapper.selectList(null);
+        if (faceList == null || faceList.isEmpty()) {
+            throw new BusinessException(400, "no registered face users");
         }
 
-        boolean matched = faceModelClient.compareFace(file, userFace.getFaceFeature());
-        if (!matched) {
-            throw new BusinessException(400, "face verification failed");
+        UserFace bestFace = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (UserFace userFace : faceList) {
+            Double distance = faceModelClient.calculateDistance(file, userFace.getFaceFeature());
+            if (distance != null && distance < bestDistance) {
+                bestDistance = distance;
+                bestFace = userFace;
+            }
+        }
+
+        double threshold = 0.55;
+        if (bestFace == null || bestDistance > threshold) {
+            throw new BusinessException(400, "no registered user recognized");
+        }
+
+        User user = userMapper.selectById(bestFace.getUserId());
+        if (user == null) {
+            throw new BusinessException(400, "recognized face user does not exist");
         }
 
         return buildLoginVO(user);
