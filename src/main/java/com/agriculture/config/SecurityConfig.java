@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/pest/**").permitAll()
                         .requestMatchers("/api/ai/pest/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/ai/chat").authenticated()
+                        .requestMatchers("/api/ai/voice/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/plots/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/devices/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/telemetry/**").permitAll()

@@ -47,11 +47,7 @@ public class PestServiceImpl implements PestService {
 
         String fileName = file.getOriginalFilename() == null ? "unknown" : file.getOriginalFilename();
         Optional<PestModelResponse> modelResponse = pestModelClient.detect(plotId, file);
-        PestSuggestionVO suggestion = modelResponse
-                .map(PestModelResponse::getPestId)
-                .filter(pestId -> pestId != null && !pestId.isBlank())
-                .map(this::findSuggestionOrFallback)
-                .orElse(null);
+        PestSuggestionVO suggestion = resolveSuggestion(modelResponse);
         if (suggestion == null && modelResponse.isPresent()) {
             suggestion = buildModelSuggestion(modelResponse.get());
         }
@@ -62,9 +58,7 @@ public class PestServiceImpl implements PestService {
         PestDetectVO result = new PestDetectVO();
         result.setPlotId(plotId);
         result.setFileName(fileName);
-        result.setPestId(modelResponse.map(PestModelResponse::getPestId)
-                .filter(pestId -> !pestId.isBlank())
-                .orElse(suggestion.getPestId()));
+        result.setPestId(resolveResultPestId(modelResponse, suggestion));
         result.setPestName(resolvePestName(modelResponse, suggestion));
         result.setDangerLevel(resolveDangerLevel(modelResponse, suggestion));
         result.setConfidence(modelResponse.map(PestModelResponse::getConfidence)
@@ -117,7 +111,37 @@ public class PestServiceImpl implements PestService {
         return pestDetectionRecordService.distribution(plotId, startDate, endDate);
     }
 
+    private PestSuggestionVO resolveSuggestion(Optional<PestModelResponse> modelResponse) {
+        if (modelResponse.isEmpty()) {
+            return null;
+        }
+
+        PestModelResponse response = modelResponse.get();
+        String pestId = normalizePestId(response.getPestId());
+        PestSuggestionVO suggestion = findSuggestionOrFallback(pestId);
+        if (suggestion != null) {
+            return suggestion;
+        }
+
+        String mappedId = mapKnownPestName(response.getPestName());
+        suggestion = findSuggestionOrFallback(mappedId);
+        if (suggestion != null) {
+            response.setPestId(mappedId);
+            return suggestion;
+        }
+
+        String nameAsId = normalizePestId(response.getPestName());
+        suggestion = findSuggestionOrFallback(nameAsId);
+        if (suggestion != null) {
+            response.setPestId(nameAsId);
+        }
+        return suggestion;
+    }
+
     private PestSuggestionVO findSuggestionOrFallback(String pestId) {
+        if (pestId == null || pestId.isBlank()) {
+            return null;
+        }
         try {
             PestKnowledge knowledge = pestKnowledgeService.getByPestId(pestId);
             if (knowledge != null) {
@@ -153,7 +177,7 @@ public class PestServiceImpl implements PestService {
     }
 
     private String resolvePestName(Optional<PestModelResponse> modelResponse, PestSuggestionVO suggestion) {
-        if (suggestion.getPestName() != null && !suggestion.getPestName().isBlank()) {
+        if (suggestion != null && suggestion.getPestName() != null && !suggestion.getPestName().isBlank()) {
             return suggestion.getPestName();
         }
         return modelResponse.map(PestModelResponse::getPestName)
@@ -162,12 +186,28 @@ public class PestServiceImpl implements PestService {
     }
 
     private String resolveDangerLevel(Optional<PestModelResponse> modelResponse, PestSuggestionVO suggestion) {
-        if (suggestion.getDangerLevel() != null && !suggestion.getDangerLevel().isBlank()) {
+        if (suggestion != null && suggestion.getDangerLevel() != null && !suggestion.getDangerLevel().isBlank()) {
             return suggestion.getDangerLevel();
         }
         return modelResponse.map(PestModelResponse::getDangerLevel)
                 .filter(level -> !level.isBlank())
                 .orElse("LOW");
+    }
+
+    private String resolveResultPestId(Optional<PestModelResponse> modelResponse, PestSuggestionVO suggestion) {
+        String pestId = modelResponse.map(PestModelResponse::getPestId)
+                .map(this::normalizePestId)
+                .filter(id -> !id.isBlank())
+                .orElse(null);
+        if (pestId != null) {
+            return pestId;
+        }
+        if (suggestion != null && suggestion.getPestId() != null && !suggestion.getPestId().isBlank()) {
+            return suggestion.getPestId();
+        }
+        return modelResponse.map(PestModelResponse::getPestName)
+                .map(name -> "model_" + Integer.toHexString(Math.abs(name.hashCode())))
+                .orElse("unknown");
     }
 
     private String resolveMockPestId(String fileName) {
@@ -183,7 +223,11 @@ public class PestServiceImpl implements PestService {
 
     private PestSuggestionVO buildModelSuggestion(PestModelResponse response) {
         PestSuggestionVO suggestion = new PestSuggestionVO();
-        suggestion.setPestId(response.getPestId());
+        String pestId = normalizePestId(response.getPestId());
+        if (pestId == null && response.getPestName() != null && !response.getPestName().isBlank()) {
+            pestId = "model_" + Integer.toHexString(Math.abs(response.getPestName().hashCode()));
+        }
+        suggestion.setPestId(pestId);
         suggestion.setPestName(response.getPestName());
         suggestion.setDangerLevel(response.getDangerLevel() == null || response.getDangerLevel().isBlank()
                 ? "LOW"
@@ -196,6 +240,48 @@ public class PestServiceImpl implements PestService {
         suggestion.setChemicalControl(List.of());
         suggestion.setPrevention(List.of());
         return suggestion;
+    }
+
+    private String normalizePestId(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim()
+                .toLowerCase()
+                .replace(' ', '_')
+                .replace('-', '_');
+    }
+
+    private String mapKnownPestName(String pestName) {
+        if (pestName == null || pestName.isBlank()) {
+            return null;
+        }
+        String text = pestName.trim().toLowerCase();
+        if (containsAny(text, "蚜虫", "aphid")) {
+            return "aphid";
+        }
+        if (containsAny(text, "白粉虱", "粉虱", "whitefly")) {
+            return "whitefly";
+        }
+        if (containsAny(text, "蓟马", "thrips")) {
+            return "thrips";
+        }
+        if (containsAny(text, "红蜘蛛", "叶螨", "spider", "mite")) {
+            return "spider_mite";
+        }
+        if (containsAny(text, "粘虫", "黏虫", "armyworm")) {
+            return "armyworm";
+        }
+        return null;
+    }
+
+    private boolean containsAny(String text, String... keywords) {
+        for (String keyword : keywords) {
+            if (keyword != null && text.contains(keyword.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Map<String, PestSuggestionVO> buildFallbackKnowledgeBase() {

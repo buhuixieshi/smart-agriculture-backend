@@ -177,6 +177,7 @@ public class AiChatServiceImpl implements AiChatService {
                 你是智慧农业项目的智能农事助手。回答必须优先依据 context.backendContext 中的实时数据。
                 如果用户询问当前地块、设备、遥测、告警、灌溉策略、补光策略，必须结合后端提供的数据回答；没有数据时要明确说明缺少哪类数据。
                 你不能假装已经操作硬件或浏览器页面。需要硬件控制时，返回 actionProposal，由前端展示确认后调用后端控制接口。
+                如果用户要求停止、取消、结束正在执行的灌溉或补光任务，必须返回关闭类 actionProposal，例如 PUMP_OFF 或 LIGHT_OFF。
                 需要页面跳转时，返回 actionProposal.type=NAVIGATE 和 route，由前端执行跳转。
                 硬件控制动作必须使用现有后端接口，不要编造新接口。
                 """;
@@ -236,6 +237,11 @@ public class AiChatServiceImpl implements AiChatService {
             return navigation;
         }
 
+        Map<String, Object> stopAction = inferStopAction(text, dto);
+        if (stopAction != null) {
+            return stopAction;
+        }
+
         if (containsAny(text, "打开水泵", "开启水泵", "开水泵", "pump on", "start pump")) {
             String deviceCode = resolveDeviceCode(dto);
             if (deviceCode == null || deviceCode.isBlank()) {
@@ -279,6 +285,69 @@ public class AiChatServiceImpl implements AiChatService {
             ), "检测到关闭补光意图，前端确认后调用补光接口。");
         }
 
+        return null;
+    }
+
+    private Map<String, Object> inferStopAction(String text, AiChatDTO dto) {
+        if (!containsAny(text, "停止", "停下", "取消", "结束", "关闭当前", "停止任务", "取消任务", "stop", "cancel")) {
+            return null;
+        }
+
+        String deviceCode = resolveDeviceCode(dto);
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
+
+        if (containsAny(text, "补光", "灯", "light")) {
+            return controlAction("CONTROL_LIGHT", "/api/light/control", Map.of(
+                    "deviceCode", deviceCode,
+                    "action", "OFF",
+                    "brightness", 0
+            ), "检测到停止补光任务意图，前端确认后关闭补光灯。");
+        }
+
+        if (containsAny(text, "水泵", "灌溉", "浇水", "泵", "pump", "irrigation", "watering")) {
+            return controlAction("CONTROL_DEVICE", "/api/control/send", Map.of(
+                    "deviceCode", deviceCode,
+                    "commandType", "PUMP_OFF",
+                    "commandValue", "OFF"
+            ), "检测到停止当前任务意图，前端确认后关闭水泵。");
+        }
+
+        String runningTarget = resolveRunningStopTarget(dto);
+        if ("LIGHT".equals(runningTarget)) {
+            return controlAction("CONTROL_LIGHT", "/api/light/control", Map.of(
+                    "deviceCode", deviceCode,
+                    "action", "OFF",
+                    "brightness", 0
+            ), "检测到停止当前任务意图，当前补光灯可能正在运行，前端确认后关闭补光灯。");
+        }
+
+        return controlAction("CONTROL_DEVICE", "/api/control/send", Map.of(
+                "deviceCode", deviceCode,
+                "commandType", "PUMP_OFF",
+                "commandValue", "OFF"
+        ), "检测到停止当前任务意图，前端确认后关闭水泵。");
+    }
+
+    private String resolveRunningStopTarget(AiChatDTO dto) {
+        if (dto == null || dto.getPlotId() == null) {
+            return null;
+        }
+        try {
+            TelemetryData latest = telemetryService.getLatestByPlotId(dto.getPlotId());
+            if (latest == null) {
+                return null;
+            }
+            if ("ON".equalsIgnoreCase(latest.getPumpStatus())) {
+                return "PUMP";
+            }
+            if ("ON".equalsIgnoreCase(latest.getLightStatus())) {
+                return "LIGHT";
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
         return null;
     }
 
@@ -380,6 +449,8 @@ public class AiChatServiceImpl implements AiChatService {
             normalizedAction = normalizePumpCommand(normalizedAction);
         } else if ("CONTROL_LIGHT".equalsIgnoreCase(type)) {
             normalizedAction = normalizeLightCommand(normalizedAction);
+        } else if (isStopAction(normalizedAction)) {
+            normalizedAction = inferStopCommandFromRawAction(rawAction, parameters);
         }
 
         return switch (normalizedAction) {
@@ -456,6 +527,29 @@ public class AiChatServiceImpl implements AiChatService {
             return "LIGHT_OFF";
         }
         return action;
+    }
+
+    private boolean isStopAction(String action) {
+        return "STOP".equals(action)
+                || "CANCEL".equals(action)
+                || "STOP_TASK".equals(action)
+                || "CANCEL_TASK".equals(action)
+                || "TASK_STOP".equals(action);
+    }
+
+    private String inferStopCommandFromRawAction(Map<String, Object> rawAction, Map<String, Object> parameters) {
+        String target = firstNonBlank(
+                stringValue(rawAction.get("target")),
+                stringValue(rawAction.get("deviceType")),
+                stringValue(rawAction.get("taskType")),
+                stringValue(parameters.get("target")),
+                stringValue(parameters.get("deviceType")),
+                stringValue(parameters.get("taskType"))
+        );
+        if (target != null && containsAny(target.toLowerCase(), "light", "灯", "补光")) {
+            return "LIGHT_OFF";
+        }
+        return "PUMP_OFF";
     }
 
     private void copyMap(Map<String, Object> target, Object source) {

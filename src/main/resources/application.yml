@@ -25,7 +25,7 @@ jwt:
 hardware:
   control:
     enabled: true
-    base-url: http://192.168.20.84:3000
+    base-url: http://172.20.10.13:3000
     device: bearpi_001
 
 mqtt:
@@ -54,6 +54,14 @@ ai:
     model:
       enabled: true
       url: http://127.0.0.1:5002/api/ai/chat
+      token: ${AI_SERVICE_TOKEN:}
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 240
+  voice:
+    model:
+      enabled: true
+      transcribe-url: http://127.0.0.1:5002/api/ai/voice/transcribe
+      synthesize-url: http://127.0.0.1:5002/api/ai/voice/synthesize
       token: ${AI_SERVICE_TOKEN:}
       connect-timeout-seconds: 5
       read-timeout-seconds: 240
