@@ -55,7 +55,16 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
     @Override
     @Transactional
     public ControlCommand sendCommand(String deviceCode, String commandType, String commandValue, String requestSource) {
+        return sendCommand(deviceCode, commandType, commandValue, requestSource, null, null);
+    }
+
+    @Override
+    @Transactional
+    public ControlCommand sendCommand(String deviceCode, String commandType, String commandValue, String requestSource,
+                                      Integer durationSeconds, Integer brightness) {
         validateCommandType(commandType);
+        validateDurationSeconds(durationSeconds);
+        validateBrightness(commandType, brightness);
 
         Device device = deviceService.getByDeviceCode(deviceCode);
         if (device == null) {
@@ -79,6 +88,8 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         command.setDeviceCode(device.getDeviceCode());
         command.setCommandType(commandType);
         command.setCommandValue(normalizeCommandValue(commandType, commandValue));
+        command.setDurationSeconds(durationSeconds);
+        command.setBrightness(brightness);
         command.setStatus("PENDING");
         command.setRequestSource(resolveRequestSource(requestSource));
         command.setCreatedAt(now);
@@ -184,7 +195,8 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
             throw new IllegalArgumentException("action只支持ON或OFF");
         }
 
-        ControlCommand command = sendCommand(dto.getDeviceCode(), commandType, commandValue);
+        Integer durationSeconds = "PUMP_ON".equals(commandType) ? dto.getDurationSeconds() : null;
+        ControlCommand command = sendCommand(dto.getDeviceCode(), commandType, commandValue, "WEB", durationSeconds, null);
         return toCommandVO(command);
     }
 
@@ -230,6 +242,27 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         return commandValue;
     }
 
+    private void validateDurationSeconds(Integer durationSeconds) {
+        if (durationSeconds == null) {
+            return;
+        }
+        if (durationSeconds < 1 || durationSeconds > 86400) {
+            throw new IllegalArgumentException("durationSeconds only supports 1~86400");
+        }
+    }
+
+    private void validateBrightness(String commandType, Integer brightness) {
+        if (brightness == null) {
+            return;
+        }
+        if (!"LIGHT_ON".equals(commandType) && !"LIGHT_OFF".equals(commandType)) {
+            throw new IllegalArgumentException("brightness only supports light commands");
+        }
+        if (brightness < 0 || brightness > 100) {
+            throw new IllegalArgumentException("brightness only supports 0~100");
+        }
+    }
+
     private String generateCommandNo() {
         return "CMD" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
     }
@@ -243,6 +276,8 @@ public class ControlServiceImpl extends ServiceImpl<ControlCommandMapper, Contro
         vo.setDeviceCode(command.getDeviceCode());
         vo.setCommandType(command.getCommandType());
         vo.setCommandValue(command.getCommandValue());
+        vo.setDurationSeconds(command.getDurationSeconds());
+        vo.setBrightness(command.getBrightness());
         vo.setStatus(command.getStatus());
         vo.setRequestSource(command.getRequestSource());
         vo.setErrorMessage(command.getErrorMessage());

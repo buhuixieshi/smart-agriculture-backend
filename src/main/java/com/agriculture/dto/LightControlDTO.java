@@ -12,5 +12,11 @@ public class LightControlDTO {
     @NotBlank(message = "action为必填参数")
     private String action;
 
+    private String value;
+
+    private Integer brightness;
+
+    private Integer durationSeconds;
+
     private Boolean force;
 }

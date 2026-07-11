@@ -14,4 +14,10 @@ public class PestModelResponse {
     private Double confidence;
 
     private String message;
+
+    private String answer;
+
+    private String source;
+
+    private String modelStatus;
 }

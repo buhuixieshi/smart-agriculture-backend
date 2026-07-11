@@ -11,9 +11,11 @@ public class AiChatModelProperties {
 
     private Boolean enabled = true;
 
-    private String url = "http://192.168.20.84:5000/api/ai/chat";
+    private String url = "http://127.0.0.1:5002/api/ai/chat";
+
+    private String token;
 
     private Integer connectTimeoutSeconds = 5;
 
-    private Integer readTimeoutSeconds = 45;
+    private Integer readTimeoutSeconds = 240;
 }

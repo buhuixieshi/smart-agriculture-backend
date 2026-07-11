@@ -11,7 +11,7 @@ public class HardwareControlProperties {
 
     private Boolean enabled = true;
 
-    private String baseUrl = "http://192.168.20.190:3000";
+    private String baseUrl = "http://192.168.20.84:3000";
 
     private String device = "bearpi_001";
 }

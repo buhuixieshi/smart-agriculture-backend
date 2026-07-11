@@ -37,6 +37,12 @@ public class HardwareControlClientImpl implements HardwareControlClient {
         body.put("device", device);
         body.put("type", resolveType(command.getCommandType()));
         body.put("action", resolveAction(command));
+        if (command.getDurationSeconds() != null) {
+            body.put("durationSeconds", command.getDurationSeconds());
+        }
+        if (command.getBrightness() != null) {
+            body.put("brightness", command.getBrightness());
+        }
 
         JsonNode response = restClient.post()
                 .uri("/api/control")
@@ -72,6 +78,9 @@ public class HardwareControlClientImpl implements HardwareControlClient {
 
     private String resolveAction(ControlCommand command) {
         if (command.getCommandValue() != null && !command.getCommandValue().isBlank()) {
+            if ("LIGHT_ON".equals(command.getCommandType()) || "LIGHT_OFF".equals(command.getCommandType())) {
+                return command.getCommandValue().trim();
+            }
             return command.getCommandValue().trim().toUpperCase();
         }
 

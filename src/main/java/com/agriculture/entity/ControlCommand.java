@@ -26,6 +26,10 @@ public class ControlCommand {
 
     private String commandValue;
 
+    private Integer durationSeconds;
+
+    private Integer brightness;
+
     private String status;
 
     private String requestSource;

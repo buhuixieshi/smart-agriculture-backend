@@ -39,6 +39,8 @@ public class MqttCommandServiceImpl implements MqttCommandService {
             payload.put("deviceCode", command.getDeviceCode());
             payload.put("commandType", command.getCommandType());
             payload.put("commandValue", resolveAction(command));
+            payload.put("durationSeconds", command.getDurationSeconds());
+            payload.put("brightness", command.getBrightness());
             payload.put("service_id", SERVICE_ID);
             payload.put("command_name", resolveCommandName(command.getCommandType()));
             payload.put("paras", buildParas(command));
@@ -69,11 +71,20 @@ public class MqttCommandServiceImpl implements MqttCommandService {
 
         if ("PUMP_ON".equals(command.getCommandType()) || "PUMP_OFF".equals(command.getCommandType())) {
             paras.put("Motor", action);
+            if (command.getDurationSeconds() != null) {
+                paras.put("DurationSeconds", command.getDurationSeconds());
+            }
             return paras;
         }
 
         if ("LIGHT_ON".equals(command.getCommandType()) || "LIGHT_OFF".equals(command.getCommandType())) {
             paras.put("Light", action);
+            if (command.getBrightness() != null) {
+                paras.put("Brightness", command.getBrightness());
+            }
+            if (command.getDurationSeconds() != null) {
+                paras.put("DurationSeconds", command.getDurationSeconds());
+            }
             return paras;
         }
 
@@ -82,6 +93,9 @@ public class MqttCommandServiceImpl implements MqttCommandService {
 
     private String resolveAction(ControlCommand command) {
         if (command.getCommandValue() != null && !command.getCommandValue().isBlank()) {
+            if ("LIGHT_ON".equals(command.getCommandType()) || "LIGHT_OFF".equals(command.getCommandType())) {
+                return command.getCommandValue().trim();
+            }
             return command.getCommandValue().trim().toUpperCase();
         }
 

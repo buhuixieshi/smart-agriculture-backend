@@ -24,8 +24,8 @@ jwt:
 
 hardware:
   control:
-    enabled: false
-    base-url: http://192.168.20.190:3000
+    enabled: true
+    base-url: http://192.168.20.84:3000
     device: bearpi_001
 
 mqtt:
@@ -44,17 +44,19 @@ mqtt:
 pest:
   model:
     enabled: true
-    url: http://192.168.20.84:5000/pest/detect
+    url: http://127.0.0.1:5002/api/ai/pest/analyze
+    token: ${AI_SERVICE_TOKEN:}
     connect-timeout-seconds: 5
-    read-timeout-seconds: 45
+    read-timeout-seconds: 240
 
 ai:
   chat:
     model:
       enabled: true
-      url: http://192.168.20.84:5000/api/ai/chat
+      url: http://127.0.0.1:5002/api/ai/chat
+      token: ${AI_SERVICE_TOKEN:}
       connect-timeout-seconds: 5
-      read-timeout-seconds: 45
+      read-timeout-seconds: 240
 
 face:
   model:

@@ -49,13 +49,22 @@ public class PestServiceImpl implements PestService {
         Optional<PestModelResponse> modelResponse = pestModelClient.detect(plotId, file);
         PestSuggestionVO suggestion = modelResponse
                 .map(PestModelResponse::getPestId)
+                .filter(pestId -> pestId != null && !pestId.isBlank())
                 .map(this::findSuggestionOrFallback)
-                .orElseGet(() -> findSuggestionOrFallback(resolveMockPestId(fileName)));
+                .orElse(null);
+        if (suggestion == null && modelResponse.isPresent()) {
+            suggestion = buildModelSuggestion(modelResponse.get());
+        }
+        if (suggestion == null) {
+            suggestion = findSuggestionOrFallback(resolveMockPestId(fileName));
+        }
 
         PestDetectVO result = new PestDetectVO();
         result.setPlotId(plotId);
         result.setFileName(fileName);
-        result.setPestId(suggestion.getPestId());
+        result.setPestId(modelResponse.map(PestModelResponse::getPestId)
+                .filter(pestId -> !pestId.isBlank())
+                .orElse(suggestion.getPestId()));
         result.setPestName(resolvePestName(modelResponse, suggestion));
         result.setDangerLevel(resolveDangerLevel(modelResponse, suggestion));
         result.setConfidence(modelResponse.map(PestModelResponse::getConfidence)
@@ -170,6 +179,23 @@ public class PestServiceImpl implements PestService {
     private Double resolveMockConfidence(String fileName, long size) {
         int seed = Math.abs((fileName + size).hashCode());
         return 0.72 + (seed % 24) / 100.0;
+    }
+
+    private PestSuggestionVO buildModelSuggestion(PestModelResponse response) {
+        PestSuggestionVO suggestion = new PestSuggestionVO();
+        suggestion.setPestId(response.getPestId());
+        suggestion.setPestName(response.getPestName());
+        suggestion.setDangerLevel(response.getDangerLevel() == null || response.getDangerLevel().isBlank()
+                ? "LOW"
+                : response.getDangerLevel());
+        suggestion.setDescription(response.getAnswer() == null || response.getAnswer().isBlank()
+                ? response.getMessage()
+                : response.getAnswer());
+        suggestion.setPhysicalControl(List.of());
+        suggestion.setBiologicalControl(List.of());
+        suggestion.setChemicalControl(List.of());
+        suggestion.setPrevention(List.of());
+        return suggestion;
     }
 
     private Map<String, PestSuggestionVO> buildFallbackKnowledgeBase() {

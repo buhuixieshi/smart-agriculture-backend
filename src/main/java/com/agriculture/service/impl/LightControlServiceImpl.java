@@ -57,15 +57,74 @@ public class LightControlServiceImpl implements LightControlService {
         }
 
         String action = dto.getAction();
-        if ("ON".equalsIgnoreCase(action)) {
+        String commandValue = resolveLightCommandValue(dto);
+        Integer brightness = parseBrightness(commandValue);
+        if (isLightOnAction(action, commandValue)) {
             checkManualLightOnSafety(device, Boolean.TRUE.equals(dto.getForce()));
-            return toCommandVO(controlService.sendCommand(device.getDeviceCode(), "LIGHT_ON", "ON", "WEB"));
+            return toCommandVO(controlService.sendCommand(
+                    device.getDeviceCode(), "LIGHT_ON", commandValue, "WEB", dto.getDurationSeconds(), brightness));
         }
-        if ("OFF".equalsIgnoreCase(action)) {
-            return toCommandVO(controlService.sendCommand(device.getDeviceCode(), "LIGHT_OFF", "OFF", "WEB"));
+        if (isLightOffAction(action, commandValue)) {
+            return toCommandVO(controlService.sendCommand(
+                    device.getDeviceCode(), "LIGHT_OFF", commandValue, "WEB", null, brightness));
         }
 
         throw new IllegalArgumentException("action只支持ON或OFF");
+    }
+
+    private String resolveLightCommandValue(LightControlDTO dto) {
+        if (dto.getBrightness() != null) {
+            validateBrightness(dto.getBrightness());
+            return String.valueOf(dto.getBrightness());
+        }
+        if (dto.getValue() != null && !dto.getValue().isBlank()) {
+            return dto.getValue().trim();
+        }
+        if ("ON".equalsIgnoreCase(dto.getAction())) {
+            return "100";
+        }
+        if ("OFF".equalsIgnoreCase(dto.getAction())) {
+            return "0";
+        }
+        return dto.getAction() == null ? null : dto.getAction().trim();
+    }
+
+    private boolean isLightOnAction(String action, String commandValue) {
+        if ("ON".equalsIgnoreCase(action)) {
+            return true;
+        }
+        Integer brightness = parseBrightness(commandValue);
+        return brightness != null && brightness > 0;
+    }
+
+    private boolean isLightOffAction(String action, String commandValue) {
+        if ("OFF".equalsIgnoreCase(action)) {
+            return true;
+        }
+        Integer brightness = parseBrightness(commandValue);
+        return brightness != null && brightness == 0;
+    }
+
+    private Integer parseBrightness(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            int brightness = Integer.parseInt(value.trim());
+            validateBrightness(brightness);
+            return brightness;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private void validateBrightness(Integer brightness) {
+        if (brightness == null) {
+            return;
+        }
+        if (brightness < 0 || brightness > 100) {
+            throw new IllegalArgumentException("value only supports 0~100");
+        }
     }
 
     @Override
@@ -304,6 +363,8 @@ public class LightControlServiceImpl implements LightControlService {
         vo.setDeviceCode(command.getDeviceCode());
         vo.setCommandType(command.getCommandType());
         vo.setCommandValue(command.getCommandValue());
+        vo.setDurationSeconds(command.getDurationSeconds());
+        vo.setBrightness(command.getBrightness());
         vo.setStatus(command.getStatus());
         vo.setRequestSource(command.getRequestSource());
         vo.setErrorMessage(command.getErrorMessage());

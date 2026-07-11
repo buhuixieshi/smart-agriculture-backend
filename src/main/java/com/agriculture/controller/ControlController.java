@@ -31,7 +31,9 @@ public class ControlController {
     @OperationLogRecord(type = "CONTROL_SEND", target = "control_command", detail = "发送控制命令")
     public Result<ControlCommand> send(@RequestParam(required = false) String deviceCode,
                                        @RequestParam(required = false) String commandType,
-                                       @RequestParam(required = false) String commandValue) {
+                                       @RequestParam(required = false) String commandValue,
+                                       @RequestParam(required = false) Integer durationSeconds,
+                                       @RequestParam(required = false) Integer brightness) {
         if (deviceCode == null || deviceCode.isBlank()) {
             return Result.fail(400, "deviceCode为必填参数");
         }
@@ -40,7 +42,7 @@ public class ControlController {
             return Result.fail(400, "commandType为必填参数");
         }
 
-        return Result.ok(controlService.sendCommand(deviceCode, commandType, commandValue));
+        return Result.ok(controlService.sendCommand(deviceCode, commandType, commandValue, "WEB", durationSeconds, brightness));
     }
 
     @PostMapping("/irrigation")

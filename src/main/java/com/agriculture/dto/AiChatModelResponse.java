@@ -3,6 +3,7 @@ package com.agriculture.dto;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class AiChatModelResponse {
@@ -16,4 +17,12 @@ public class AiChatModelResponse {
     private String message;
 
     private List<String> suggestions;
+
+    private Map<String, Object> actionProposal;
+
+    private String conversationId;
+
+    private Boolean memoryCommitted;
+
+    private Integer memoryRecallCount;
 }

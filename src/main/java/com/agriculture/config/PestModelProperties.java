@@ -11,9 +11,11 @@ public class PestModelProperties {
 
     private Boolean enabled = false;
 
-    private String url = "http://127.0.0.1:5001/pest/detect";
+    private String url = "http://127.0.0.1:5002/api/ai/pest/analyze";
 
-    private Integer connectTimeoutSeconds = 3;
+    private String token;
 
-    private Integer readTimeoutSeconds = 10;
+    private Integer connectTimeoutSeconds = 5;
+
+    private Integer readTimeoutSeconds = 240;
 }

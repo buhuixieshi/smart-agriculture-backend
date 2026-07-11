@@ -11,4 +11,6 @@ public class IrrigationControlDTO {
 
     @NotBlank(message = "action为必填参数")
     private String action;
+
+    private Integer durationSeconds;
 }

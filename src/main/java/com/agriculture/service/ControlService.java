@@ -13,6 +13,9 @@ public interface ControlService extends IService<ControlCommand> {
 
     ControlCommand sendCommand(String deviceCode, String commandType, String commandValue, String requestSource);
 
+    ControlCommand sendCommand(String deviceCode, String commandType, String commandValue, String requestSource,
+                               Integer durationSeconds, Integer brightness);
+
     List<ControlCommand> listByDeviceCode(String deviceCode);
 
     CommandVO irrigationControl(IrrigationControlDTO dto);

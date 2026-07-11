@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS control_command (
   device_code VARCHAR(50) NOT NULL,
   command_type VARCHAR(50) NOT NULL,
   command_value VARCHAR(100),
+  duration_seconds INT,
+  brightness INT,
   status VARCHAR(20) DEFAULT 'PENDING',
   request_source VARCHAR(20) DEFAULT 'WEB',
   error_message VARCHAR(255),
