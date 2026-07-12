@@ -97,7 +97,7 @@ public class AlarmRuleServiceImpl implements AlarmRuleService {
                 false
         );
 
-        if (strategy == null || Boolean.FALSE.equals(strategy.getAutoMode())) {
+        if (strategy == null) {
             return;
         }
 
@@ -106,17 +106,16 @@ public class AlarmRuleServiceImpl implements AlarmRuleService {
             return;
         }
 
-        int threshold = resolveConsecutiveThreshold(strategy.getConsecutiveThreshold());
-        if (!isContinuousLowMoisture(telemetryData.getPlotId(), moistureMin, threshold)) {
+        if (telemetryData.getSoilMoisture().compareTo(moistureMin) >= 0) {
+            recoverLowMoistureAlarms(telemetryData.getPlotId());
             return;
         }
 
         Alarm activeAlarm = alarmService.getOne(
                 new LambdaQueryWrapper<Alarm>()
                         .eq(Alarm::getPlotId, telemetryData.getPlotId())
-                        .eq(Alarm::getDeviceId, telemetryData.getDeviceId())
                         .eq(Alarm::getAlarmType, LOW_SOIL_MOISTURE)
-                        .eq(Alarm::getStatus, STATUS_ACTIVE)
+                        .in(Alarm::getStatus, STATUS_ACTIVE, "ACKED", "ACKNOWLEDGED")
                         .orderByDesc(Alarm::getCreateTime)
                         .last("LIMIT 1"),
                 false
@@ -129,7 +128,6 @@ public class AlarmRuleServiceImpl implements AlarmRuleService {
             activeAlarm.setMessage(MSG_LOW_SOIL_MOISTURE);
             activeAlarm.setCreateTime(LocalDateTime.now());
             alarmService.updateById(activeAlarm);
-            pushAlarm(activeAlarm);
             log.warn("Low soil moisture alarm refreshed, alarmId={}, plotId={}, deviceId={}, triggerValue={}, thresholdValue={}",
                     activeAlarm.getId(), activeAlarm.getPlotId(), activeAlarm.getDeviceId(),
                     activeAlarm.getTriggerValue(), activeAlarm.getThresholdValue());
@@ -151,6 +149,18 @@ public class AlarmRuleServiceImpl implements AlarmRuleService {
         pushAlarm(alarm);
         log.warn("Low soil moisture alarm created, alarmId={}, plotId={}, deviceId={}, triggerValue={}, thresholdValue={}",
                 alarm.getId(), alarm.getPlotId(), alarm.getDeviceId(), alarm.getTriggerValue(), alarm.getThresholdValue());
+    }
+
+    private void recoverLowMoistureAlarms(Long plotId) {
+        List<Alarm> alarms = alarmService.list(
+                new LambdaQueryWrapper<Alarm>()
+                        .eq(Alarm::getPlotId, plotId)
+                        .eq(Alarm::getAlarmType, LOW_SOIL_MOISTURE)
+                        .in(Alarm::getStatus, STATUS_ACTIVE, "ACKED", "ACKNOWLEDGED")
+        );
+        for (Alarm alarm : alarms) {
+            pushAlarm(alarmService.recover(alarm.getId()));
+        }
     }
 
     @Override

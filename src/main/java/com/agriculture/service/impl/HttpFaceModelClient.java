@@ -5,19 +5,17 @@ import com.agriculture.config.FaceModelProperties;
 import com.agriculture.service.FaceModelClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.time.Duration;
 
 @Service
 public class HttpFaceModelClient implements FaceModelClient {
@@ -27,14 +25,13 @@ public class HttpFaceModelClient implements FaceModelClient {
     private final RestTemplate restTemplate;
 
     public HttpFaceModelClient(FaceModelProperties properties,
-                               RestTemplateBuilder restTemplateBuilder,
                                ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.restTemplate = restTemplateBuilder
-                .connectTimeout(Duration.ofSeconds(properties.getConnectTimeoutSeconds()))
-                .readTimeout(Duration.ofSeconds(properties.getReadTimeoutSeconds()))
-                .build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.getConnectTimeoutSeconds() * 1000);
+        requestFactory.setReadTimeout(properties.getReadTimeoutSeconds() * 1000);
+        this.restTemplate = new RestTemplate(requestFactory);
     }
 
     @Override

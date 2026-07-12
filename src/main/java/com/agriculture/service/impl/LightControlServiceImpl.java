@@ -188,6 +188,10 @@ public class LightControlServiceImpl implements LightControlService {
             return;
         }
 
+        if (!"ONLINE".equalsIgnoreCase(device.getStatus()) || !isLightCapable(device)) {
+            return;
+        }
+
         int cooldownMinutes = strategy.getCooldownMinutes() == null ? DEFAULT_COOLDOWN_MINUTES : strategy.getCooldownMinutes();
         if (hasRecentLightCommand(device.getDeviceCode(), cooldownMinutes)) {
             return;

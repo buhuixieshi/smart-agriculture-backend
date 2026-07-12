@@ -7,13 +7,13 @@ import com.agriculture.vo.AiVoiceTranscribeVO;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -21,7 +21,6 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -36,14 +35,13 @@ public class HttpAiVoiceModelClient implements AiVoiceModelClient {
     private final RestTemplate restTemplate;
 
     public HttpAiVoiceModelClient(AiVoiceModelProperties properties,
-                                  ObjectMapper objectMapper,
-                                  RestTemplateBuilder restTemplateBuilder) {
+                                  ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.restTemplate = restTemplateBuilder
-                .connectTimeout(Duration.ofSeconds(properties.getConnectTimeoutSeconds()))
-                .readTimeout(Duration.ofSeconds(properties.getReadTimeoutSeconds()))
-                .build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.getConnectTimeoutSeconds() * 1000);
+        requestFactory.setReadTimeout(properties.getReadTimeoutSeconds() * 1000);
+        this.restTemplate = new RestTemplate(requestFactory);
     }
 
     @Override
@@ -56,8 +54,13 @@ public class HttpAiVoiceModelClient implements AiVoiceModelClient {
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             HttpHeaders fileHeaders = new HttpHeaders();
             fileHeaders.setContentType(resolveContentType(file));
-            body.add("file", new HttpEntity<>(new MultipartFileResource(file), fileHeaders));
-            body.add("audio", new HttpEntity<>(new MultipartFileResource(file), fileHeaders));
+            ByteArrayResource audioResource = new ByteArrayResource(file.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename();
+                }
+            };
+            body.add("file", new HttpEntity<>(audioResource, fileHeaders));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -243,23 +246,4 @@ public class HttpAiVoiceModelClient implements AiVoiceModelClient {
         return text == null || text.isBlank();
     }
 
-    private static class MultipartFileResource extends InputStreamResource {
-
-        private final MultipartFile file;
-
-        MultipartFileResource(MultipartFile file) throws IOException {
-            super(file.getInputStream());
-            this.file = file;
-        }
-
-        @Override
-        public String getFilename() {
-            return file.getOriginalFilename();
-        }
-
-        @Override
-        public long contentLength() {
-            return file.getSize();
-        }
-    }
 }

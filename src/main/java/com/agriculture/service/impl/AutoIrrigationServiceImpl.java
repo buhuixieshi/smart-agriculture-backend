@@ -75,6 +75,10 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
             return;
         }
 
+        if (!"ONLINE".equalsIgnoreCase(device.getStatus())) {
+            return;
+        }
+
         IrrigationRecord runningRecord = getLatestRunning(device.getDeviceCode());
         if (runningRecord != null) {
             stopIfReachedTarget(device, strategy, telemetryData.getSoilMoisture());
@@ -109,7 +113,8 @@ public class AutoIrrigationServiceImpl implements AutoIrrigationService {
             }
 
             Device device = deviceService.getByDeviceCode(record.getDeviceCode());
-            if (device == null || hasRecentCommand(record.getDeviceCode(), "PUMP_OFF")) {
+            if (device == null || !"ONLINE".equalsIgnoreCase(device.getStatus())
+                    || hasRecentCommand(record.getDeviceCode(), "PUMP_OFF")) {
                 continue;
             }
 

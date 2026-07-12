@@ -1,4 +1,8 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
   application:
     name: smart-agriculture-backend
 
@@ -25,7 +29,7 @@ jwt:
 hardware:
   control:
     enabled: true
-    base-url: http://172.20.10.13:3000
+    base-url: http://192.168.20.84:3000
     device: bearpi_001
 
 mqtt:

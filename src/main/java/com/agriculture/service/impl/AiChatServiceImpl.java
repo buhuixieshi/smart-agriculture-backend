@@ -29,9 +29,9 @@ import java.util.Optional;
 @Service
 public class AiChatServiceImpl implements AiChatService {
 
-    private static final int MAX_CONTEXT_PLOTS = 20;
-    private static final int MAX_CONTEXT_DEVICES = 30;
-    private static final int MAX_CONTEXT_ALARMS = 10;
+    private static final int MAX_CONTEXT_PLOTS = 5;
+    private static final int MAX_CONTEXT_DEVICES = 8;
+    private static final int MAX_CONTEXT_ALARMS = 5;
 
     private final AiChatModelClient aiChatModelClient;
     private final PlotService plotService;
@@ -128,16 +128,20 @@ public class AiChatServiceImpl implements AiChatService {
         context.put("projectName", "智慧农业系统");
         context.put("now", LocalDateTime.now().toString());
         context.put("userQuestion", question);
-        context.put("systemInstruction", systemInstruction());
-        context.put("frontendRoutes", frontendRoutes());
-        context.put("actionProtocol", actionProtocol());
+        context.put("responseRequirement", "Answer briefly in Chinese. Prefer 3 to 6 short sentences. Return JSON only.");
+        if (isActionRelatedQuestion(question)) {
+            context.put("systemInstruction", systemInstruction());
+            context.put("frontendRoutes", frontendRoutes());
+            context.put("actionProtocol", actionProtocol());
+        }
 
         Long plotId = dto.getPlotId();
         try {
-            List<Plot> plots = plotService.list();
-            context.put("plots", plots.stream().limit(MAX_CONTEXT_PLOTS).map(this::plotMap).toList());
             if (plotId != null) {
                 context.put("currentPlot", plotMap(plotService.getById(plotId)));
+            } else {
+                List<Plot> plots = plotService.list();
+                context.put("plots", plots.stream().limit(MAX_CONTEXT_PLOTS).map(this::plotMap).toList());
             }
         } catch (Exception e) {
             context.put("plotsError", e.getMessage());
@@ -170,6 +174,17 @@ public class AiChatServiceImpl implements AiChatService {
         }
 
         return context;
+    }
+
+    private boolean isActionRelatedQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String text = question.toLowerCase();
+        return containsAny(text,
+                "打开", "关闭", "开启", "停止", "取消", "跳转", "进入", "页面",
+                "水泵", "灌溉", "补光", "灯", "设备", "告警",
+                "open", "close", "start", "stop", "cancel", "navigate", "pump", "light");
     }
 
     private String systemInstruction() {

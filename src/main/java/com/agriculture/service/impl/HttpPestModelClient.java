@@ -5,20 +5,18 @@ import com.agriculture.dto.PestModelResponse;
 import com.agriculture.service.PestModelClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.time.Duration;
 import java.util.Optional;
 
 @Service
@@ -28,12 +26,12 @@ public class HttpPestModelClient implements PestModelClient {
     private final PestModelProperties properties;
     private final RestTemplate restTemplate;
 
-    public HttpPestModelClient(PestModelProperties properties, RestTemplateBuilder restTemplateBuilder) {
+    public HttpPestModelClient(PestModelProperties properties) {
         this.properties = properties;
-        this.restTemplate = restTemplateBuilder
-                .connectTimeout(Duration.ofSeconds(properties.getConnectTimeoutSeconds()))
-                .readTimeout(Duration.ofSeconds(properties.getReadTimeoutSeconds()))
-                .build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.getConnectTimeoutSeconds() * 1000);
+        requestFactory.setReadTimeout(properties.getReadTimeoutSeconds() * 1000);
+        this.restTemplate = new RestTemplate(requestFactory);
     }
 
     @Override
@@ -49,8 +47,14 @@ public class HttpPestModelClient implements PestModelClient {
             fileHeaders.setContentType(contentType == null || contentType.isBlank()
                     ? MediaType.APPLICATION_OCTET_STREAM
                     : MediaType.parseMediaType(contentType));
-            body.add("image", new HttpEntity<>(new MultipartFileResource(file), fileHeaders));
-            body.add("file", new HttpEntity<>(new MultipartFileResource(file), fileHeaders));
+            byte[] imageBytes = file.getBytes();
+            ByteArrayResource imageResource = new ByteArrayResource(imageBytes) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename();
+                }
+            };
+            body.add("file", new HttpEntity<>(imageResource, fileHeaders));
             if (plotId != null) {
                 body.add("plotId", String.valueOf(plotId));
                 body.add("conversationId", "pest-plot-" + plotId);
@@ -230,23 +234,4 @@ public class HttpPestModelClient implements PestModelClient {
         return text == null || text.isBlank();
     }
 
-    private static class MultipartFileResource extends InputStreamResource {
-
-        private final MultipartFile file;
-
-        MultipartFileResource(MultipartFile file) throws IOException {
-            super(file.getInputStream());
-            this.file = file;
-        }
-
-        @Override
-        public String getFilename() {
-            return file.getOriginalFilename();
-        }
-
-        @Override
-        public long contentLength() {
-            return file.getSize();
-        }
-    }
 }
