@@ -29,7 +29,7 @@ jwt:
 hardware:
   control:
     enabled: true
-    base-url: http://192.168.20.84:3000
+    base-url: http://10.244.167.198:3000
     device: bearpi_001
 
 mqtt:
